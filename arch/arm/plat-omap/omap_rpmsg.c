@@ -341,6 +341,8 @@ static int rpmsg_rproc_events(struct notifier_block *this,
 		return rpmsg_rproc_suspend(rpdev);
 	case RPROC_POS_SUSPEND:
 		return rpmsg_rproc_pos_suspend(rpdev);
+	case RPROC_LOAD_ERROR:
+		return rpmsg_rproc_load_error(rpdev);
 	case RPROC_RESUME:
 		return rpmsg_rproc_resume(rpdev);
 	case RPROC_SECURE:
