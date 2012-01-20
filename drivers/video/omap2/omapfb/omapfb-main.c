@@ -31,6 +31,7 @@
 #include <linux/omapfb.h>
 #include <linux/cpufreq.h>
 #include <linux/gpio.h>
+#include <linux/wait.h>
 
 #include <video/omapdss.h>
 #include <plat/vram.h>
@@ -836,6 +837,11 @@ static int omapfb_open(struct fb_info *fbi, int user)
 
 static int omapfb_release(struct fb_info *fbi, int user)
 {
+	struct omapfb_info *ofbi = FB2OFB(fbi);
+	struct omapfb2_device *fbdev = ofbi->fbdev;
+
+	omapfb_disable_vsync(fbdev);
+
 	return 0;
 }
 
@@ -1410,6 +1416,9 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 			}
 		}
 
+		if (fbdev->vsync_active)
+			omapfb_enable_vsync(fbdev);
+
 		break;
 
 	case FB_BLANK_NORMAL:
@@ -1418,6 +1427,12 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
 	case FB_BLANK_POWERDOWN:
+
+		if (fbdev->vsync_active)
+			omapfb_disable_vsync(fbdev);
+
+		if (display->state != OMAP_DSS_DISPLAY_ACTIVE)
+			goto exit;
 
 		while (num_displays) {
 			display = fbdev->displays[--num_displays];
@@ -2558,6 +2573,7 @@ static int omapfb_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 
+	INIT_WORK(&fbdev->vsync_work, omapfb_send_vsync_work);
 	return 0;
 
 cleanup:
@@ -2572,6 +2588,7 @@ static int omapfb_remove(struct platform_device *pdev)
 	struct omapfb2_device *fbdev = platform_get_drvdata(pdev);
 
 	/* FIXME: wait till completion of pending events */
+	/* TODO: terminate vsync thread */
 
 	omapfb_remove_sysfs(fbdev);
 

@@ -97,6 +97,10 @@ struct omapfb2_device {
 		struct omap_dss_device *dssdev;
 		u8 bpp;
 	} bpp_overrides[10];
+
+	bool vsync_active;
+	ktime_t vsync_timestamp;
+	struct work_struct vsync_work;
 };
 
 struct omapfb_colormode {
