@@ -21,6 +21,8 @@
 #ifndef _HDMI_TI_4xxx_
 #define _HDMI_TI_4xxx_
 
+#include <video/cec.h>
+
 /* Delay before retry of HDMI detect */
 #define OMAP_HDMI_TIME_TO_RETRY	600
 
@@ -386,28 +388,6 @@ enum hdmi_aksv_err {
 	HDMI_AKSV_ZERO = 0,
 	HDMI_AKSV_ERROR = 1,
 	HDMI_AKSV_VALID = 2
-};
-struct cec_dev {
-	int device_id;
-	int clear_existing_device;
-	int phy_addr;
-};
-
-struct cec_tx_data {
-	char   dest_device_id;
-	char   initiator_device_id;
-	char   send_ping;
-	char   retry_count;
-	char   tx_cmd;
-	char   tx_count;
-	char   tx_operand[15];
-};
-struct cec_rx_data {
-	char   init_device_id;
-	char   dest_device_id;
-	char   rx_cmd;
-	char   rx_count;
-	char   rx_operand[15];
 };
 
 
