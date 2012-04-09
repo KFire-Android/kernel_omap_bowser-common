@@ -236,6 +236,9 @@ static int omap_dss_probe(struct platform_device *pdev)
 	for (i = 0; i < pdata->num_devices; ++i) {
 		struct omap_dss_device *dssdev = pdata->devices[i];
 
+		if (def_disp_name && strcmp(def_disp_name, dssdev->name) == 0)
+			pdata->default_device = dssdev;
+
 		r = omap_dss_register_device(dssdev);
 		if (r) {
 			DSSERR("device %d %s register failed %d\n", i,
