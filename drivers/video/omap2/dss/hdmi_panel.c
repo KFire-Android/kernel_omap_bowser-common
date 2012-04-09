@@ -197,8 +197,9 @@ static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 	 * This is only for framebuffer update not for TV timing setting
 	 * Setting TV timing will be done only on enable
 	 */
-	dssdev->panel.timings.x_res = 640;
-	dssdev->panel.timings.y_res = 480;
+	if (dssdev->panel.timings.x_res == 0)
+		dssdev->panel.timings = (struct omap_video_timings)
+			{640, 480, 31746, 128, 24, 29, 9, 40, 2};
 
 	/* sysfs entry to provide user space control to set deepcolor mode */
 	if (sysfs_create_group(&dssdev->dev.kobj, &hdmi_panel_attr_group))
