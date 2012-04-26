@@ -268,6 +268,9 @@ static void suspend_backoff(void)
 			  msecs_to_jiffies(SUSPEND_BACKOFF_INTERVAL));
 }
 
+int pm_suspend_in_progress;
+EXPORT_SYMBOL(pm_suspend_in_progress);
+
 static void suspend(struct work_struct *work)
 {
 	int ret;
@@ -285,7 +288,9 @@ static void suspend(struct work_struct *work)
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("suspend: enter suspend\n");
 	getnstimeofday(&ts_entry);
+	pm_suspend_in_progress = 1;
 	ret = pm_suspend(requested_suspend_state);
+	pm_suspend_in_progress = 0;
 	getnstimeofday(&ts_exit);
 
 	if (debug_mask & DEBUG_EXIT_SUSPEND) {

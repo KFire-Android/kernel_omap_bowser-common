@@ -377,6 +377,13 @@ config USB_NET_ZAURUS
 	  really need this non-conformant variant of CDC Ethernet (or in
 	  some cases CDC MDLM) protocol, not "g_ether".
 
+config USB_NET_QMI
+	tristate "USB Qualcomm messaging interface (QMI) support"
+	depends on USB_USBNET
+	default n
+	help
+	  Enable Qualcomm messaging interface to communicate with the modem.
+
 config USB_NET_CX82310_ETH
 	tristate "Conexant CX82310 USB ethernet port"
 	depends on USB_USBNET

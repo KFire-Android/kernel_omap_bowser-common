@@ -139,4 +139,27 @@
 #define DCS_GET_ID2             0xdb
 #define DCS_GET_ID3             0xdc
 
+#if defined (CONFIG_PANEL_SAMSUNG_LTL089CL01)
+#define TC358765_WIDTH		1920
+#define TC358765_HEIGHT		1200
+#define TC358765_PCLK		81035
+/* DISPC timings */
+#define TC358765_HFP		4
+#define TC358765_HSW		5
+#define TC358765_HBP		39
+#define TC358765_VFP		9
+#define TC358765_VSW		1
+#define TC358765_VBP		10
+#else
+#define TC358765_WIDTH		1280
+#define TC358765_HEIGHT		768
+#define TC358765_PCLK		65183
+#define TC358765_HFP		48
+#define TC358765_HSW		32
+#define TC358765_HBP		44
+#define TC358765_VFP		3
+#define TC358765_VSW		6
+#define TC358765_VBP		13
+#endif
+
 #endif

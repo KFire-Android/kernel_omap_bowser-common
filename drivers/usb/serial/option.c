@@ -484,6 +484,12 @@ static void option_instat_callback(struct urb *urb);
 #define LG_VENDOR_ID				0x1004
 #define LG_PRODUCT_L02C				0x618f
 
+#define LAB126_VENDOR_ID                       0x1949
+
+#define ELMO_PRODUCT_ID                        0x9001
+#define GROVER_PRODUCT_ID                      0x9002
+#define ERNIE_PRODUCT_ID                       0x9003
+
 /* some devices interfaces need special handling due to a number of reasons */
 enum option_blacklist_reason {
 		OPTION_BLACKLIST_NONE = 0,
@@ -764,6 +770,7 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x6000)}, /* ZTE AC8700 */
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x6613)}, /* Onda H600/ZTE MF330 */
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x9000)}, /* SIMCom SIM5218 */
+	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x9008)}, /* Emergency download mode */
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_6280) }, /* BP3-USB & BP3-EXT HSDPA */
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_6008) },
 	{ USB_DEVICE(TELIT_VENDOR_ID, TELIT_PRODUCT_UC864E) },
@@ -1315,6 +1322,14 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(VIETTEL_VENDOR_ID, VIETTEL_PRODUCT_VT1000, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZD_VENDOR_ID, ZD_PRODUCT_7000, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE(LG_VENDOR_ID, LG_PRODUCT_L02C) }, /* docomo L-02C modem */
+	{ USB_DEVICE(LAB126_VENDOR_ID, ELMO_PRODUCT_ID) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(LAB126_VENDOR_ID, GROVER_PRODUCT_ID, 0xff, 0x2, 0x1) },
+	/* Ernie - Diag port in normal mode */
+	{ USB_DEVICE_AND_INTERFACE_INFO(LAB126_VENDOR_ID, ERNIE_PRODUCT_ID, 0xff, 0xb, 0x0) },
+	/* Ernie - Diag port in download mode */
+	{ USB_DEVICE_AND_INTERFACE_INFO(LAB126_VENDOR_ID, ERNIE_PRODUCT_ID, 0xff, 0xb, 0x1) },
+	/* Ernie - mdm port */
+	{ USB_DEVICE_AND_INTERFACE_INFO(LAB126_VENDOR_ID, ERNIE_PRODUCT_ID, 0xff, 0x2, 0x1) },
 	{ } /* Terminating entry */
 };
 MODULE_DEVICE_TABLE(usb, option_ids);

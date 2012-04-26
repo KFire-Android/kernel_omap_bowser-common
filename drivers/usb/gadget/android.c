@@ -153,7 +153,7 @@ static struct usb_configuration android_config_driver = {
 	.label		= "android",
 	.unbind		= android_unbind_config,
 	.bConfigurationValue = 1,
-	.bmAttributes	= USB_CONFIG_ATT_ONE,
+	.bmAttributes	= USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER,
 	.bMaxPower	= 0xFA, /* 500ma */
 };
 
@@ -1108,8 +1108,10 @@ static void android_disconnect(struct usb_gadget *gadget)
 	composite_disconnect(gadget);
 
 	spin_lock_irqsave(&cdev->lock, flags);
-	dev->connected = 0;
-	schedule_work(&dev->work);
+	if (dev->connected) {
+		dev->connected = 0;
+		schedule_work(&dev->work);
+	}
 	spin_unlock_irqrestore(&cdev->lock, flags);
 }
 

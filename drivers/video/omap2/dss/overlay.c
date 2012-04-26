@@ -37,8 +37,11 @@
 #include "dss.h"
 #include "dss_features.h"
 
+#define OVERLAY_AREA_BW_THRESHOLD (1920*1080)
+
 static int num_overlays;
 static struct list_head overlay_list;
+static bool band_changed;
 
 static ssize_t overlay_name_show(struct omap_overlay *ovl, char *buf)
 {
@@ -566,6 +569,7 @@ int dss_check_overlay(struct omap_overlay *ovl, struct omap_dss_device *dssdev)
 			outh = info->out_height;
 	}
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
 	if (!info->wb_source) {
 		if (dw < info->pos_x + outw) {
 			DSSDBG("check_overlay failed 1: %d < %d + %d\n",
@@ -579,7 +583,7 @@ int dss_check_overlay(struct omap_overlay *ovl, struct omap_dss_device *dssdev)
 			return -EINVAL;
 		}
 	}
-
+#endif
 	if ((ovl->supported_modes & info->color_mode) == 0) {
 		DSSERR("overlay doesn't support mode %d\n", info->color_mode);
 		return -EINVAL;
@@ -699,6 +703,39 @@ struct omap_overlay *omap_dss_get_overlay(int num)
 }
 EXPORT_SYMBOL(omap_dss_get_overlay);
 
+bool omap_dss_overlay_ensure_bw(void)
+{
+	int i;
+	struct omap_overlay *ovl;
+	int num_planes_enabled = 0;
+	bool high_res_screen = false;
+
+	/* Check if DSS need higher OPP on CORE or not */
+	for (i = 0; i < omap_dss_get_num_overlays(); ++i) {
+		ovl = omap_dss_get_overlay(i);
+
+		if (!ovl->info.enabled)
+			continue;
+
+		/* Check for high resolution screes, 1080p */
+		if ((ovl->info.width * ovl->info.height) >=
+						OVERLAY_AREA_BW_THRESHOLD)
+			high_res_screen = true;
+
+		++num_planes_enabled;
+	}
+
+	if ((num_planes_enabled > 1) && high_res_screen) {
+		if (!band_changed)
+			band_changed = true;
+		return true;
+	} else if (band_changed)
+		band_changed = false;
+
+	return false;
+}
+EXPORT_SYMBOL(omap_dss_overlay_ensure_bw);
+
 static void omap_dss_add_overlay(struct omap_overlay *overlay)
 {
 	++num_overlays;
@@ -731,6 +768,7 @@ void dss_init_overlays(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&overlay_list);
 
+	band_changed = false;
 	num_overlays = 0;
 
 	for (i = 0; i < dss_feat_get_num_ovls(); ++i) {

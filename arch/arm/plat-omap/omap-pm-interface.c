@@ -63,6 +63,7 @@ int omap_pm_set_min_bus_tput(struct device *dev, u8 agent_id, long r)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(omap_pm_set_min_bus_tput);
 
 int omap_pm_set_max_dev_wakeup_lat(struct device *req_dev, struct device *dev,
 				   long t)

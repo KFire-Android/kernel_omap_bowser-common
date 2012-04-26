@@ -23,6 +23,9 @@ config SND_OMAP_SOC_ABE
 config SND_OMAP_SOC_DMIC
     tristate
 
+config ABE_44100
+        tristate
+
 config SND_OMAP_SOC_HDMI
 	tristate
 
@@ -102,6 +105,17 @@ config SND_OMAP_SOC_AM3517EVM
 	  Say Y if you want to add support for SoC audio on the OMAP3517 / AM3517
 	  EVM.
 
+config SND_OMAP_SOC_BOWSER
+	tristate "SoC Audio for Wolfson WM8962 Codec"
+	depends on SND_OMAP_SOC && I2C
+	select SND_OMAP_SOC_MCBSP
+	select SND_SOC_WM8962
+	select SND_OMAP_SOC_ABE
+	select SND_OMAP_SOC_ABE_DSP
+	select ABE_44100
+	help
+	  Say Y if you want to add support for SoC audio on Lab126 Bowser
+
 config SND_OMAP_SOC_SDP3430
 	tristate "SoC Audio support for Texas Instruments SDP3430"
 	depends on TWL4030_CORE && SND_OMAP_SOC && MACH_OMAP_3430SDP
@@ -114,7 +128,7 @@ config SND_OMAP_SOC_SDP3430
 config SND_OMAP_SOC_SDP4430
 	tristate "SoC Audio support for Texas Instruments SDP4430 or PandaBoard"
 	depends on TWL4030_CORE && \
-		(MACH_OMAP_4430SDP || MACH_OMAP4_PANDA || MACH_OMAP4_TABLET)
+		(MACH_OMAP_4430SDP || MACH_OMAP4_PANDA || MACH_OMAP4_TABLET || MACH_OMAP4_BOWSER)
 	select SND_OMAP_SOC
 	select SND_OMAP_SOC_MCPDM
 	select SND_SOC_TWL6040

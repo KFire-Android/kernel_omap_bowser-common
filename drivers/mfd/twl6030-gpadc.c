@@ -253,8 +253,8 @@ static const struct twl6032_ideal_code
 		.v2 = 9000,
 	},
 	{	/* CHANNEL 10 */
-		.code1 = 150,
-		.code2 = 751,
+		.code1 = 149,
+		.code2 = 745,
 		.v1 = 1000,
 		.v2 = 5000,
 	},
@@ -399,6 +399,32 @@ static ssize_t set_offset(struct device *dev,
 
 	twl6030_calib_tbl[attr->index].offset_error = val;
 
+	return status;
+}
+
+static ssize_t show_value(struct device *dev,
+	struct device_attribute *devattr, char *buf)
+{
+	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
+	int temp1 = 0;
+	int temp2 = 0;
+	int ret;
+	int status;
+	struct twl6030_gpadc_request req;
+
+	req.channels = (1 << attr->index);
+	req.method = TWL6030_GPADC_SW2;
+	req.active = 0;
+	req.func_cb = NULL;
+	ret = twl6030_gpadc_conversion(&req);
+	if (ret < 0)
+		return ret;
+
+	if (req.rbuf[attr->index] > 0) {
+		temp1 = req.rbuf[attr->index];
+		temp2 = req.buf[attr->index].raw_code;
+	}
+	status = sprintf(buf, "%d\n", temp1);
 	return status;
 }
 
@@ -904,7 +930,9 @@ static ssize_t show_raw_code(struct device *dev,
 static SENSOR_DEVICE_ATTR(in##index##_gain, S_IRUGO|S_IWUSR, show_gain, \
 	set_gain, index); \
 static SENSOR_DEVICE_ATTR(in##index##_offset, S_IRUGO|S_IWUSR, show_offset, \
-	set_offset, index)
+	set_offset, index); \
+static SENSOR_DEVICE_ATTR(in##index##_value, S_IROTH|S_IWUSR, show_value, \
+        NULL, index);
 
 in_gain(0);
 in_gain(1);
@@ -952,7 +980,8 @@ in_channel(18);
 
 #define IN_ATTRS(X)\
 	&sensor_dev_attr_in##X##_gain.dev_attr.attr,	\
-	&sensor_dev_attr_in##X##_offset.dev_attr.attr	\
+	&sensor_dev_attr_in##X##_offset.dev_attr.attr,	\
+	&sensor_dev_attr_in##X##_value.dev_attr.attr
 
 #define IN_ATTRS_CHANNEL(X)\
 	&sensor_dev_attr_in##X##_channel.dev_attr.attr,		\
@@ -1142,39 +1171,33 @@ static int twl6032_calibration(struct twl6030_gpadc_data *gpadc)
 			/* D1 */
 			d1 = (trim_regs[3] & 0x1F) << 2;
 			d1 |= (trim_regs[1] & 0x06) >> 1;
-			if (trim_regs[1] & 0x01)
-				d1 = -d1;
+			d1 |= (trim_regs[1] & 0x01) ? 0xFFFFFF80 : 0;
 
 			/* D2 */
 			d2 = (trim_regs[4] & 0x3F) << 2;
 			d2 |= (trim_regs[2] & 0x06) >> 1;
-			if (trim_regs[2] & 0x01)
-				d2 = -d2;
+			d2 |= (trim_regs[2] & 0x01) ? 0xFFFFFF00 : 0;
 			break;
 		case 8:
 			/* D1 */
 			temp = (trim_regs[3] & 0x1F) << 2;
 			temp |= (trim_regs[1] & 0x06) >> 1;
-			if (trim_regs[1] & 0x01)
-				temp = -temp;
+			temp |= (trim_regs[1] & 0x01) ? 0xFFFFFF80 : 0;
 
 			d1 = (trim_regs[8] & 0x18) << 1;
 			d1 |= (trim_regs[7] & 0x1E) >> 1;
-			if (trim_regs[7] & 0x01)
-				d1 = -d1;
+			d1 |= (trim_regs[7] & 0x01) ? 0xFFFFFFC0 : 0;
 
 			d1 += temp;
 
 			/* D2 */
 			temp = (trim_regs[4] & 0x3F) << 2;
 			temp |= (trim_regs[2] & 0x06) >> 1;
-			if (trim_regs[2] & 0x01)
-				temp = -temp;
+			temp |= (trim_regs[2] & 0x01) ? 0xFFFFFF00 : 0;
 
 			d2 = (trim_regs[10] & 0x1F) << 2;
 			d2 |= (trim_regs[8] & 0x06) >> 1;
-			if (trim_regs[8] & 0x01)
-				d2 = -d2;
+			d2 |= (trim_regs[8] & 0x01) ? 0xFFFFFF80 : 0;
 
 			d2 += temp;
 			break;
@@ -1182,64 +1205,54 @@ static int twl6032_calibration(struct twl6030_gpadc_data *gpadc)
 			/* D1 */
 			temp = (trim_regs[3] & 0x1F) << 2;
 			temp |= (trim_regs[1] & 0x06) >> 1;
-			if (trim_regs[1] & 0x01)
-				temp = -temp;
+			temp |= (trim_regs[1] & 0x01) ? 0xFFFFFF80 : 0;
 
 			d1 = (trim_regs[14] & 0x18) << 1;
 			d1 |= (trim_regs[12] & 0x1E) >> 1;
-			if (trim_regs[12] & 0x01)
-				d1 = -d1;
+			d1 |= (trim_regs[12] & 0x01) ? 0xFFFFFFC0 : 0;
 
 			d1 += temp;
 
 			/* D2 */
 			temp = (trim_regs[4] & 0x3F) << 2;
 			temp |= (trim_regs[2] & 0x06) >> 1;
-			if (trim_regs[2] & 0x01)
-				temp = -temp;
+			temp |= (trim_regs[2] & 0x01) ? 0xFFFFFF00 : 0;
 
 			d2 = (trim_regs[16] & 0x1F) << 2;
 			d2 |= (trim_regs[14] & 0x06) >> 1;
-			if (trim_regs[14] & 0x01)
-				d2 = -d2;
+			d2 |= (trim_regs[14] & 0x01) ? 0xFFFFFF80 : 0;
 
 			d2 += temp;
 		case 10:
 			/* D1 */
 			d1 = (trim_regs[11] & 0x0F) << 3;
 			d1 |= (trim_regs[9] & 0x0E) >> 1;
-			if (trim_regs[9] & 0x01)
-				d1 = -d1;
+			d1 |= (trim_regs[1] & 0x01) ? 0xFFFFFF80 : 0;
 
 			/* D2 */
-			d2 = (trim_regs[15] & 0x0F) << 3;
+			d2 = (trim_regs[15] & 0x0F) << 2;
 			d2 |= (trim_regs[13] & 0x0E) >> 1;
-			if (trim_regs[13] & 0x01)
-				d2 = -d2;
+			d2 |= (trim_regs[13] & 0x01) ? 0xFFFFFF80 : 0;
 			break;
 		case 7:
 		case 18:
 			/* D1 */
 			temp = (trim_regs[3] & 0x1F) << 2;
 			temp |= (trim_regs[1] & 0x06) >> 1;
-			if (trim_regs[1] & 0x01)
-				temp = -temp;
+			temp |= (trim_regs[1] & 0x01) ? 0xFFFFFF80 : 0;
 
-			d1 = (trim_regs[5] & 0x7E) >> 1;
-			if (trim_regs[5] & 0x01)
-				d1 = -d1;
+			d1 = (trim_regs[1] & 0x7E) >> 1;
+			d1 |= (trim_regs[12] & 0x01) ? 0xFFFFFFC0 : 0;
 
 			d1 += temp;
 
 			/* D2 */
 			temp = (trim_regs[4] & 0x3F) << 2;
 			temp |= (trim_regs[2] & 0x06) >> 1;
-			if (trim_regs[2] & 0x01)
-				temp = -temp;
+			temp |= (trim_regs[2] & 0x01) ? 0xFFFFFF00 : 0;
 
-			d2 = (trim_regs[6] & 0xFE) >> 1;
-			if (trim_regs[6] & 0x01)
-				d2 = -d2;
+			d2 = (trim_regs[6] & 0x7F) >> 1;
+			d2 |= (trim_regs[14] & 0x01) ? 0xFFFFFF80 : 0;
 
 			d2 += temp;
 			break;

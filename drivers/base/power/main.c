@@ -28,6 +28,9 @@
 #include <linux/async.h>
 #include <linux/suspend.h>
 #include <linux/timer.h>
+#ifdef CONFIG_LAB126
+#include <linux/metricslog.h>
+#endif
 
 #include "../base.h"
 #include "power.h"
@@ -403,6 +406,8 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 	ktime_t calltime;
 	u64 usecs64;
 	int usecs;
+	char buf[64];
+	const char *verb;
 
 	calltime = ktime_get();
 	usecs64 = ktime_to_ns(ktime_sub(calltime, starttime));
@@ -410,9 +415,21 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 	usecs = usecs64;
 	if (usecs == 0)
 		usecs = 1;
+
+	verb = pm_verb(state.event);
+
 	pr_info("PM: %s%s%s of devices complete after %ld.%03ld msecs\n",
-		info ?: "", info ? " " : "", pm_verb(state.event),
+		info ?: "", info ? " " : "", verb,
 		usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
+
+#ifdef CONFIG_LAB126
+	sprintf(buf, "dpmst:dpmd%c:time_ms=%ld.%03ld:%s%s%s complete",
+		info ? info[0] : verb[0],
+		usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC,
+		info ? : "", info ? " " : "", verb);
+
+	log_to_metrics(ANDROID_LOG_INFO, "dpm", buf);
+#endif
 }
 
 /*------------------------- Resume routines -------------------------*/

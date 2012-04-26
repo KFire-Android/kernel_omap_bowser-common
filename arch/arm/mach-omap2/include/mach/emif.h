@@ -160,7 +160,7 @@
 #define LP_MODE_DISABLE		0
 #define LP_MODE_CLOCK_STOP	1
 #define LP_MODE_SELF_REFRESH	2
-#define LP_MODE_PWR_DN		4
+#define LP_MODE_PWR_DN		3
 
 /* REG_DPD_EN */
 #define DPD_DISABLE	0
@@ -172,7 +172,7 @@
  * determined by PHY and DLL integration with EMIF. Setting the magic
  * values suggested by hw team.
  */
-#define EMIF_DDR_PHY_CTRL_1_BASE_VAL			0x049FF
+#define EMIF_DDR_PHY_CTRL_1_BASE_VAL			0x849FF
 #define EMIF_DLL_SLAVE_DLY_CTRL_400_MHZ			0x41
 #define EMIF_DLL_SLAVE_DLY_CTRL_200_MHZ			0x80
 #define EMIF_DLL_SLAVE_DLY_CTRL_100_MHZ_AND_LESS	0xFF
@@ -265,4 +265,9 @@ int omap_emif_setup_device_details(
 			const struct emif_device_details *emif2_devices);
 
 void emif_clear_irq(int emif_id);
+
+int omap_sdram_vendor(void);
+
+int omap_sdram_density(void);
+
 #endif

@@ -19,7 +19,7 @@
 
 # Common support
 obj-y := id.o io.o control.o mux.o devices.o serial.o gpmc.o timer-gp.o pm.o \
-	 common.o gpio.o dma.o wd_timer.o omap_pmic.o dmtimer.o
+	 common.o gpio.o dma.o wd_timer.o omap_pmic.o dmtimer.o bowser_idme_init.o
 
 omap-2-3-common				= irq.o sdrc.o
 hwmod-common				= omap_hwmod.o \
@@ -38,6 +38,7 @@ obj-$(CONFIG_TWL4030_CORE) += omap_twl.o
 obj-$(CONFIG_OMAP_TPS6236X) += omap_tps6236x.o
 obj-$(CONFIG_OMAP_TEMP_SENSOR) +=temp_sensor_device.o
 obj-$(CONFIG_OMAP4_PCB_SENSOR) += pcb_temp_sensor_device.o
+obj-$(CONFIG_CASE_TEMP_SENSOR) += case_temp_sensor_device.o
 
 # SMP support ONLY available for OMAP4
 obj-$(CONFIG_SMP)			+= omap-smp.o omap-headsmp.o
@@ -278,6 +279,17 @@ obj-$(CONFIG_MACH_OMAP_4430SDP)		+= board-4430sdp.o \
 					   hsmmc.o \
 					   omap_phy_internal.o \
 					   omap4_apps_brd_id.o
+obj-$(CONFIG_MACH_OMAP4_BOWSER)		+= board-bowser.o \
+					   board-bowser-bluetooth.o \
+					   board-blaze-touch.o \
+					   board-bowser-panel.o \
+					   board-blaze-keypad.o \
+					   board-blaze-sensors.o \
+					   board-44xx-identity.o \
+					   hsmmc.o \
+					   omap_phy_internal.o \
+					   omap4_apps_brd_id.o	\
+					   board-bowser-wifi.o
 obj-$(CONFIG_MACH_OMAP_BLAZE)		+= board-44xx-tablet.o \
 					   board-44xx-identity.o \
 					   board-44xx-power.o \

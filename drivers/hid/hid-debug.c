@@ -1064,14 +1064,23 @@ static const struct file_operations hid_debug_events_fops = {
 };
 
 
-void hid_debug_register(struct hid_device *hdev, const char *name)
+int hid_debug_register(struct hid_device *hdev, const char *name)
 {
+    if( name == NULL || hdev == NULL )
+   {
+      pr_err("invalid parameter attempting to register HID device.\n");
+      // invalid parameter.
+      return -1;
+   }
+   
 	hdev->debug_dir = debugfs_create_dir(name, hid_debug_root);
 	hdev->debug_rdesc = debugfs_create_file("rdesc", 0400,
 			hdev->debug_dir, hdev, &hid_debug_rdesc_fops);
 	hdev->debug_events = debugfs_create_file("events", 0400,
 			hdev->debug_dir, hdev, &hid_debug_events_fops);
 	hdev->debug = 1;
+	
+	return 0;
 }
 
 void hid_debug_unregister(struct hid_device *hdev)

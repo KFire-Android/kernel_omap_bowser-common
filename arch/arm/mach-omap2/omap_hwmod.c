@@ -1688,6 +1688,7 @@ struct omap_hwmod *omap_hwmod_lookup(const char *name)
 
 	return oh;
 }
+EXPORT_SYMBOL_GPL(omap_hwmod_lookup);
 
 /**
  * omap_hwmod_for_each - call function for each registered omap_hwmod
@@ -1874,6 +1875,30 @@ static int omap_hwmod_set_ioring_wakeup(struct omap_hwmod *oh, bool set_wake)
 	return ret;
 }
 
+/**
+ * omap_hwmod_get_ioring_wakeup_status - get ioring wakeup status of pad
+ * @oh: struct omap_hwmod *
+ *
+ * Return if sw has set the IO ring to be wakeup capable or not
+ */
+static bool omap_hwmod_get_ioring_wakeup_status(struct omap_hwmod *oh)
+{
+	struct omap_device_pad *pad;
+	bool ret = false;
+	int j;
+
+	if (oh->mux && oh->mux->enabled) {
+		for (j = 0; j < oh->mux->nr_pads_dynamic; j++) {
+			pad = oh->mux->pads_dynamic[j];
+			if (pad->flags & OMAP_DEVICE_PAD_WAKEUP) {
+				if (pad->idle & OMAP_WAKEUP_EN)
+					ret = true;
+			}
+		}
+	}
+
+	return ret;
+}
 /**
  * omap_hwmod_enable - enable an omap_hwmod
  * @oh: struct omap_hwmod *
@@ -2216,6 +2241,7 @@ int omap_hwmod_enable_ioring_wakeup(struct omap_hwmod *oh)
 	/* Enable pad wake-up capability */
 	return omap_hwmod_set_ioring_wakeup(oh, true);
 }
+EXPORT_SYMBOL_GPL(omap_hwmod_enable_ioring_wakeup);
 
 /**
  * omap_hwmod_disable_ioring_wakeup - Clear wakeup flag for iopad.
@@ -2513,6 +2539,12 @@ int omap_hwmod_pad_get_wakeup_status(struct omap_hwmod *oh)
 	return -EINVAL;
 }
 
+bool omap_hwmod_pad_is_ioring_enabled(struct omap_hwmod *oh)
+{
+	if (oh)
+		return omap_hwmod_get_ioring_wakeup_status(oh);
+	return false;
+}
 /**
  * omap_hwmod_name_get_dev() - convert a hwmod name to device pointer
  * @oh_name: name of the hwmod device

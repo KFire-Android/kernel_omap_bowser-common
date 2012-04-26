@@ -185,11 +185,13 @@ static int pcb_get_temp(struct thermal_dev *tdev)
 {
 	struct platform_device *pdev = to_platform_device(tdev->dev);
 	struct pcb_temp_sensor *temp_sensor = platform_get_drvdata(pdev);
-
-	temp_sensor->therm_fw->current_temp =
-			pcb_read_current_temp(temp_sensor);
-
-	return temp_sensor->therm_fw->current_temp;
+	int temp = 0, retry = 10;
+	do {
+		temp = pcb_read_current_temp(temp_sensor);
+		msleep(1);
+	} while (temp < 0 && retry-- );
+	temp_sensor->therm_fw->current_temp = temp;
+	return temp;
 }
 
 /*
@@ -235,9 +237,11 @@ static int pcb_temp_sensor_read_temp(struct device *dev,
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct pcb_temp_sensor *temp_sensor = platform_get_drvdata(pdev);
-	int temp = 0;
-
-	temp = pcb_read_current_temp(temp_sensor);
+	int temp = 0, retry = 10;
+	do {
+		temp = pcb_read_current_temp(temp_sensor);
+		msleep(1);
+	} while(temp < 0 && retry--);
 
 	return sprintf(buf, "%d\n", temp);
 }

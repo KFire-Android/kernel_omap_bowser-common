@@ -493,6 +493,7 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 	if (!country_ie)
 		return;
 
+#ifdef CONFIG_CFG80211_COUNTRY_IE_SUPPORT
 	/*
 	 * ieee80211_bss_get_ie() ensures we can access:
 	 * - country_ie + 2, the start of the country ie data, and
@@ -502,6 +503,7 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 			    bss->channel->band,
 			    country_ie + 2,
 			    country_ie[1]);
+#endif
 }
 
 void cfg80211_connect_result(struct net_device *dev, const u8 *bssid,

@@ -22,7 +22,11 @@
 #include "prminst44xx.h"
 #include "resetreason.h"
 
-static char resetreason[1024];
+#include <linux/proc_fs.h>
+
+#define RESET_REASON_SIZE	256
+static char resetreason[RESET_REASON_SIZE];
+#define RESETREASON_PROCNAME "cpu/reset_reason"
 
 static struct {
 	const char *str;
@@ -33,10 +37,10 @@ static struct {
 	{ "Voltage Manager ",		OMAP4430_VDD_MPU_VOLT_MGR_RST_MASK |
 					OMAP4430_VDD_IVA_VOLT_MGR_RST_MASK |
 					OMAP4430_VDD_CORE_VOLT_MGR_RST_MASK },
-	{ "external warm ",		OMAP4430_EXTERNAL_WARM_RST_MASK },
+	{ "External Warm ",		OMAP4430_EXTERNAL_WARM_RST_MASK },
 	{ "MPU Watchdog Timer ",	OMAP4430_MPU_WDT_RST_MASK },
-	{ "warm software ",		OMAP4430_GLOBAL_WARM_SW_RST_MASK },
-	{ "cold ",			OMAP4430_GLOBAL_COLD_RST_MASK },
+	{ "Warm Software ",		OMAP4430_GLOBAL_WARM_SW_RST_MASK },
+	{ "Cold ",			OMAP4430_GLOBAL_COLD_RST_MASK },
 };
 
 const char *omap4_get_resetreason(void)
@@ -51,7 +55,6 @@ static int __init resetreason_init(void)
 		omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
 					    OMAP4430_PRM_DEVICE_INST,
 					    OMAP4_PRM_RSTST_OFFSET);
-	char buf[128];
 
 	strlcpy(resetreason, "Last reset was ", sizeof(resetreason));
 
@@ -60,11 +63,9 @@ static int __init resetreason_init(void)
 			strlcat(resetreason, resetreason_flags[i].str,
 				sizeof(resetreason));
 
-	snprintf(buf, sizeof(buf), "reset (PRM_RSTST=0x%x)\n", reasons);
+	strlcat(resetreason, "Reset", sizeof(resetreason));
 
-	strlcat(resetreason, buf, sizeof(resetreason));
-
-	pr_info("%s\n", resetreason);
+	pr_info("Last OMAP reset reason was %s (PRM_RSTST=0x%x)\n", resetreason, reasons);
 
 	omap4_prminst_write_inst_reg(reasons, OMAP4430_PRM_PARTITION,
 				     OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_RSTST_OFFSET);
@@ -72,4 +73,26 @@ static int __init resetreason_init(void)
 	return 0;
 }
 
+static int proc_resetreason_read(char *page, char **start, off_t off, int count,
+				int *eof, void *data, char *id)
+{
+	strlcpy(page, resetreason, sizeof(resetreason));
+	*eof = 1;
+
+	return strlen(page);
+}
+
+static int __init resetreason_procfs_init(void)
+{
+	struct proc_dir_entry *proc_resetreason = create_proc_entry(RESETREASON_PROCNAME, S_IRUGO, NULL);
+	if (proc_resetreason != NULL) {
+		proc_resetreason->data = NULL;
+		proc_resetreason->read_proc = (read_proc_t *)proc_resetreason_read;
+		proc_resetreason->write_proc = NULL;
+	}
+
+	return 0;
+}
+
 postcore_initcall(resetreason_init);
+module_init(resetreason_procfs_init);

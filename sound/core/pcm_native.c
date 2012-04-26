@@ -2122,6 +2122,13 @@ static int snd_pcm_open(struct file *file, struct snd_pcm *pcm, int stream)
 	int err;
 	struct snd_pcm_file *pcm_file;
 	wait_queue_t wait;
+	// Set audio thread priority real time to avoid scheduling issues
+	// due to the small buffer sizes for meeting audio latency target
+	// Set priority 10 which is less than threaded IRQs and other important kernel threads
+	struct sched_param param = {.sched_priority = 10 };
+	int error = sched_setscheduler_nocheck(current, SCHED_FIFO, &param);
+	if (error < 0)
+		printk( KERN_INFO "snd_pcm_open set RT priority error %d",error);
 
 	if (pcm == NULL) {
 		err = -ENODEV;

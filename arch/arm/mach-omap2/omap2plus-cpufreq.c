@@ -43,6 +43,12 @@
 
 #include "dvfs.h"
 
+#ifdef CONFIG_LAB126
+#include <linux/metricslog.h>
+#define THERMO_METRICS_STR_LEN 128
+#endif
+
+
 #ifdef CONFIG_SMP
 struct lpj_info {
 	unsigned long	ref;
@@ -64,8 +70,22 @@ static unsigned int max_thermal;
 static unsigned int max_freq;
 static unsigned int current_target_freq;
 static unsigned int current_cooling_level;
+static unsigned int cpu_cooling_level;
+static unsigned int case_cooling_level;
+static unsigned int new_cooling_level;
 static bool omap_cpufreq_ready;
 static bool omap_cpufreq_suspended;
+
+#define THERMAL_PREFIX "Thermal Policy: CPU cooling agent: "
+#define THERMAL_INFO(fmt, args...) do { printk(KERN_INFO THERMAL_PREFIX fmt, ## args); } while(0)
+
+#ifdef THERMAL_DEBUG
+#define THERMAL_DBG(fmt, args...) do { printk(KERN_DEBUG THERMAL_PREFIX fmt, ## args); } while(0)
+#else
+#define THERMAL_DBG(fmt, args...) do {} while(0)
+#endif
+
+
 
 static unsigned int omap_getspeed(unsigned int cpu)
 {
@@ -340,17 +360,57 @@ out:
 static int cpufreq_apply_cooling(struct thermal_dev *dev,
 				int cooling_level)
 {
-	if (cooling_level < current_cooling_level) {
-		pr_err("%s: Unthrottle cool level %i curr cool %i\n",
-			__func__, cooling_level, current_cooling_level);
-		omap_thermal_step_freq_up();
-	} else if (cooling_level > current_cooling_level) {
-		pr_err("%s: Throttle cool level %i curr cool %i\n",
-			__func__, cooling_level, current_cooling_level);
-		omap_thermal_step_freq_down();
+	static int old_freq = 0; //for logging
+	mutex_lock(&omap_cpufreq_lock);
+#ifdef CONFIG_LAB126
+	char *thermal_metric_prefix = "cpufreq_cooling:def:monitor=1";
+	char buf[THERMO_METRICS_STR_LEN];
+#endif
+
+	if (!strcmp(dev->domain_name, "case")) {
+		if (cooling_level > case_subzone_number)
+			case_cooling_level++;
+		else
+			(case_cooling_level > 0 )? case_cooling_level-- : case_cooling_level ;
+		if (cooling_level == 0)
+			case_cooling_level = 0;
+	} else {
+		cpu_cooling_level = cooling_level;
 	}
 
-	current_cooling_level = cooling_level;
+	if (case_cooling_level > cpu_cooling_level)
+		new_cooling_level = case_cooling_level;
+	else
+		new_cooling_level = cpu_cooling_level;
+
+	THERMAL_DBG("%s: cooling_level %d case %d cpu %d new %d curr %d\n",
+		__func__, cooling_level, case_cooling_level,
+		cpu_cooling_level, new_cooling_level, current_cooling_level);
+	if (new_cooling_level < current_cooling_level) {
+		omap_thermal_step_freq_up();
+		THERMAL_INFO("CPUFreq MAX transition from %d to %d",
+			old_freq ,current_target_freq);
+#ifdef CONFIG_LAB126
+		snprintf(buf, THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix,  "stop");
+		log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
+#endif
+		old_freq = current_target_freq;
+	} else if (new_cooling_level > current_cooling_level) {
+		omap_thermal_step_freq_down();
+		THERMAL_INFO("CPUFreq MAX transition from %d to %d",
+			( (old_freq == 0 ) ? current_target_freq:old_freq ), max_thermal);
+#ifdef CONFIG_LAB126
+		if ( current_cooling_level == 0 ) {
+			snprintf(buf, THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix,"start");
+			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
+		}
+#endif
+		old_freq = max_thermal;
+	}
+
+	current_cooling_level = new_cooling_level;
+
+	mutex_unlock(&omap_cpufreq_lock);
 
 	return 0;
 }
@@ -387,19 +447,32 @@ static struct thermal_dev_ops cpufreq_cooling_ops = {
 };
 
 static struct thermal_dev thermal_dev = {
-	.name		= "cpufreq_cooling",
+	.name		= "cpufreq_cooling.0",
 	.domain_name	= "cpu",
+	.dev_ops	= &cpufreq_cooling_ops,
+};
+
+static struct thermal_dev case_thermal_dev = {
+	.name		= "cpufreq_cooling.1",
+	.domain_name	= "case",
 	.dev_ops	= &cpufreq_cooling_ops,
 };
 
 static int __init omap_cpufreq_cooling_init(void)
 {
-	return thermal_cooling_dev_register(&thermal_dev);
+	int ret;
+
+	ret = thermal_cooling_dev_register(&thermal_dev);
+	if (ret)
+	return ret;
+
+	return thermal_cooling_dev_register(&case_thermal_dev);
 }
 
 static void __exit omap_cpufreq_cooling_exit(void)
 {
 	thermal_governor_dev_unregister(&thermal_dev);
+	thermal_governor_dev_unregister(&case_thermal_dev);
 }
 #else
 static int __init omap_cpufreq_cooling_init(void) { return 0; }
@@ -443,6 +516,10 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
 		max_freq = max(freq_table[i].frequency, max_freq);
+	max_thermal = max_freq;
+	current_cooling_level = 0;
+	cpu_cooling_level = 0;
+	case_cooling_level = 0;
 
 	/*
 	 * On OMAP SMP configuartion, both processors share the voltage

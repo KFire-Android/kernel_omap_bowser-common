@@ -27,6 +27,7 @@
 
 #include <asm/mach/map.h>
 #include <asm/cacheflush.h>
+#include <linux/dma-mapping.h>
 
 struct ion_carveout_heap {
 	struct ion_heap heap;
@@ -73,8 +74,16 @@ static int ion_carveout_heap_allocate(struct ion_heap *heap,
 				      unsigned long size, unsigned long align,
 				      unsigned long flags)
 {
+        phys_addr_t paddr;
 	buffer->priv_phys = ion_carveout_allocate(heap, size, align);
-	return buffer->priv_phys == ION_CARVEOUT_ALLOCATE_FAIL ? -ENOMEM : 0;
+        if (buffer->priv_phys == ION_CARVEOUT_ALLOCATE_FAIL)
+            return -ENOMEM;
+
+        /* MKE Invalidate cache */
+        paddr = (phys_addr_t) buffer->priv_phys;
+	outer_inv_range(paddr, paddr + size);
+
+        return 0;
 }
 
 static void ion_carveout_heap_free(struct ion_buffer *buffer)
@@ -130,24 +139,29 @@ static void per_cpu_cache_flush_arm(void *arg)
 int ion_carveout_heap_cache_operation(struct ion_buffer *buffer, size_t len,
 			unsigned long vaddr, enum cache_operation cacheop)
 {
+        phys_addr_t paddr = virt_to_phys((const volatile void*) vaddr);
+
 	if (!buffer || !buffer->cached) {
 		pr_err("%s(): buffer not mapped as cacheable\n",
 			__func__);
 		return -EINVAL;
 	}
 
+#if 0
 	if (len > FULL_CACHE_FLUSH_THRESHOLD) {
 		on_each_cpu(per_cpu_cache_flush_arm, NULL, 1);
 		outer_flush_all();
 		return 0;
 	}
+#endif
 
-	flush_cache_user_range(vaddr, (vaddr+len));
-
-	if (cacheop == CACHE_FLUSH)
-		outer_flush_range(buffer->priv_phys, buffer->priv_phys+len);
-	else
-		outer_inv_range(buffer->priv_phys, buffer->priv_phys+len);
+	if (cacheop == CACHE_FLUSH) {
+		flush_cache_user_range(vaddr, vaddr + len);
+		outer_flush_range(paddr, paddr + len);
+        } else {
+		outer_inv_range(paddr, paddr + len);
+		dmac_map_area((const void*) vaddr, len, DMA_FROM_DEVICE);
+        }
 
 	return 0;
 }

@@ -718,6 +718,7 @@ static int pga_event(struct snd_soc_dapm_widget *w,
 	struct twl6040_output *out;
 	struct delayed_work *work;
 	struct workqueue_struct *queue;
+	int ret;
 
 	switch (w->shift) {
 	case 0:
@@ -743,6 +744,27 @@ static int pga_event(struct snd_soc_dapm_widget *w,
 		out->left_step = priv->hf_left_step;
 		out->right_step = priv->hf_right_step;
 		out->step_delay = 5;	/* 5 ms between volume ramp steps */
+		if (SND_SOC_DAPM_EVENT_ON(event)) {
+			/* enable HF external boost after HFDRVs to reduce pop noise */
+			if (priv->vddhf_reg && (++priv->hfdrv == 2)) {
+				ret = regulator_enable(priv->vddhf_reg);
+				if (ret) {
+					dev_err(codec->dev, "failed to enable "
+						"VDDHF regulator %d\n", ret);
+					return ret;
+				}
+			}
+		} else {
+			/* disable HF external boost before HFDRVs to reduce pop noise */
+			if (priv->vddhf_reg && (priv->hfdrv-- == 2)) {
+				ret = regulator_disable(priv->vddhf_reg);
+				if (ret) {
+					dev_err(codec->dev, "failed to disable "
+						"VDDHF regulator %d\n", ret);
+					return ret;
+				}
+			}
+		}
 		break;
 	default:
 		return -1;
@@ -905,35 +927,6 @@ static int twl6040_ep_mode_event(struct snd_soc_dapm_widget *w,
 	return ret;
 }
 
-static int twl6040_hf_boost_event(struct snd_soc_dapm_widget *w,
-			struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-	struct twl6040_data *priv = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	if (!priv->vddhf_reg)
-		return 0;
-
-	if (SND_SOC_DAPM_EVENT_ON(event)) {
-		ret = regulator_enable(priv->vddhf_reg);
-		if (ret) {
-			dev_err(codec->dev, "failed to enable "
-				"VDDHF regulator %d\n", ret);
-			return ret;
-		}
-	} else {
-		ret = regulator_disable(priv->vddhf_reg);
-		if (ret) {
-			dev_err(codec->dev, "failed to disable "
-				"VDDHF regulator %d\n", ret);
-			return ret;
-		}
-	}
-
-	return ret;
-}
-
 static void twl6040_hs_jack_report(struct snd_soc_codec *codec,
 				   struct snd_soc_jack *jack, int report)
 {
@@ -983,7 +976,7 @@ static irqreturn_t twl6040_audio_handler(int irq, void *data)
 	struct snd_soc_codec *codec = data;
 	struct twl6040 *twl6040 = codec->control_data;
 	struct twl6040_data *priv = snd_soc_codec_get_drvdata(codec);
-	u8 intid, val;
+	u8 intid;
 
 	intid = twl6040_reg_read(twl6040, TWL6040_REG_INTID);
 
@@ -991,24 +984,6 @@ static irqreturn_t twl6040_audio_handler(int irq, void *data)
 		wake_lock_timeout(&priv->wake_lock, 2 * HZ);
 		queue_delayed_work(priv->workqueue, &priv->delayed_work,
 				   msecs_to_jiffies(200));
-	}
-
-	if (intid & TWL6040_HFINT) {
-		val = twl6040_read_reg_volatile(codec, TWL6040_REG_STATUS);
-		if (val & TWL6040_HFLOCDET)
-			dev_err(codec->dev, "Left Handsfree overcurrent\n");
-		if (val & TWL6040_HFROCDET)
-			dev_err(codec->dev, "Right Handsfree overcurrent\n");
-
-		val = twl6040_read_reg_cache(codec, TWL6040_REG_HFLCTL);
-		twl6040_write(codec, TWL6040_REG_HFLCTL,
-				val & ~TWL6040_HFDRVENAL);
-
-		val = twl6040_read_reg_cache(codec, TWL6040_REG_HFRCTL);
-		twl6040_write(codec, TWL6040_REG_HFRCTL,
-				val & ~TWL6040_HFDRVENAR);
-
-		twl6040_report_event(twl6040, TWL6040_HFOC_EVENT);
 	}
 
 	return IRQ_HANDLED;
@@ -1237,12 +1212,6 @@ static const struct snd_kcontrol_new hfr_mux_controls =
 static const struct snd_kcontrol_new ep_driver_switch_controls =
 	SOC_DAPM_SINGLE("Switch", TWL6040_REG_EARCTL, 0, 1, 0);
 
-static const struct snd_kcontrol_new auxl_switch_controls =
-	SOC_DAPM_SINGLE("Switch", TWL6040_REG_HFLCTL, 6, 1, 0);
-
-static const struct snd_kcontrol_new auxr_switch_controls =
-	SOC_DAPM_SINGLE("Switch", TWL6040_REG_HFRCTL, 6, 1, 0);
-
 /* Headset power mode */
 static const char *twl6040_headset_power_texts[] = {
 	"Low-Power", "High-Performance",
@@ -1322,8 +1291,6 @@ static const struct snd_soc_dapm_widget twl6040_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("HFL"),
 	SND_SOC_DAPM_OUTPUT("HFR"),
 	SND_SOC_DAPM_OUTPUT("EP"),
-	SND_SOC_DAPM_OUTPUT("AUXL"),
-	SND_SOC_DAPM_OUTPUT("AUXR"),
 
 	/* Analog input muxes for the capture amplifiers */
 	SND_SOC_DAPM_MUX("Analog Left Capture Route",
@@ -1390,10 +1357,6 @@ static const struct snd_soc_dapm_widget twl6040_dapm_widgets[] = {
 			SND_SOC_NOPM, 0, 0, &hsr_mux_controls),
 
 	/* Analog playback drivers */
-	SND_SOC_DAPM_SWITCH("Aux Left Playback",
-			SND_SOC_NOPM, 0, 0, &auxl_switch_controls),
-	SND_SOC_DAPM_SWITCH("Aux Right Playback",
-			SND_SOC_NOPM, 0, 0, &auxr_switch_controls),
 	SND_SOC_DAPM_OUT_DRV_E("Handsfree Left Driver",
 			TWL6040_REG_HFLCTL, 4, 0, NULL, 0,
 			pga_event,
@@ -1410,12 +1373,6 @@ static const struct snd_soc_dapm_widget twl6040_dapm_widgets[] = {
 			TWL6040_REG_HSRCTL, 2, 0, NULL, 0,
 			pga_event,
 			SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
-	SND_SOC_DAPM_SUPPLY("Handsfree Left Boost Supply", SND_SOC_NOPM, 0, 0,
-			 twl6040_hf_boost_event,
-			 SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_SUPPLY("Handsfree Right Boost Supply", SND_SOC_NOPM, 0, 0,
-			 twl6040_hf_boost_event,
-			 SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_SWITCH("Earphone Playback",
 			SND_SOC_NOPM, 0, 0, &ep_driver_switch_controls),
 	SND_SOC_DAPM_SUPPLY("Earphone Power Mode", SND_SOC_NOPM, 0, 0,
@@ -1481,19 +1438,11 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"HFDAC Left PGA", NULL, "Handsfree Left Playback"},
 	{"HFDAC Right PGA", NULL, "Handsfree Right Playback"},
 
-	{"Aux Left Playback", "Switch", "HFDAC Left PGA"},
-	{"Aux Right Playback", "Switch", "HFDAC Right PGA"},
 	{"Handsfree Left Driver", "Switch", "HFDAC Left PGA"},
 	{"Handsfree Right Driver", "Switch", "HFDAC Right PGA"},
 
-	{"Handsfree Left Driver", NULL, "Handsfree Left Boost Supply"},
-	{"Handsfree Right Driver", NULL, "Handsfree Right Boost Supply"},
-
 	{"HFL", NULL, "Handsfree Left Driver"},
 	{"HFR", NULL, "Handsfree Right Driver"},
-
-	{"AUXL", NULL, "Aux Left Playback"},
-	{"AUXR", NULL, "Aux Right Playback"},
 };
 
 static int twl6040_add_widgets(struct snd_soc_codec *codec)
@@ -1896,14 +1845,6 @@ static int twl6040_probe(struct snd_soc_codec *codec)
 		goto irq_err;
 	}
 
-	ret = twl6040_request_irq(codec->control_data, TWL6040_IRQ_HF,
-				twl6040_audio_handler, 0,
-				"twl6040_irq_hf", codec);
-	if (ret) {
-		dev_err(codec->dev, "HF IRQ request failed: %d\n", ret);
-		goto hfirq_err;
-	}
-
 	/* init vio registers */
 	twl6040_init_vio_regs(codec);
 
@@ -1919,8 +1860,6 @@ static int twl6040_probe(struct snd_soc_codec *codec)
 	return 0;
 
 bias_err:
-	twl6040_free_irq(codec->control_data, TWL6040_IRQ_HF, codec);
-hfirq_err:
 	twl6040_free_irq(codec->control_data, TWL6040_IRQ_PLUG, codec);
 irq_err:
 	wake_lock_destroy(&priv->wake_lock);
@@ -1947,7 +1886,6 @@ static int twl6040_remove(struct snd_soc_codec *codec)
 
 	twl6040_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	twl6040_free_irq(codec->control_data, TWL6040_IRQ_PLUG, codec);
-	twl6040_free_irq(codec->control_data, TWL6040_IRQ_HF, codec);
 	if (priv->vddhf_reg)
 		regulator_put(priv->vddhf_reg);
 	wake_lock_destroy(&priv->wake_lock);

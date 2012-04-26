@@ -124,6 +124,11 @@ struct ehci_hcd {			/* one per controller */
 	ktime_t			last_periodic_enable;
 	u32			command;
 
+#define USB_PHY_SMSC_INVALID_PID	(0xFFFF)
+#define USB_PHY_SMSC_3316_PID		(0x0006)
+#define USB_PHY_SMSC_333X_PID		(0x000B)
+	u16			usb_phy_smsc_pid;
+
 	/* SILICON QUIRKS */
 	unsigned		no_selective_suspend:1;
 	unsigned		has_fsl_port_bug:1; /* FreeScale */
@@ -140,8 +145,6 @@ struct ehci_hcd {			/* one per controller */
 	unsigned		no_companion_port_handoff:1; /* Omap */
 
 	/* Transceiver QUIRKS */
-	unsigned		has_smsc_ulpi_bug:1; /* Smsc */
-	unsigned		resume_error_flag:1; /* Smsc */
 	unsigned		frame_index_bug:1; /* MosChip (AKA NetMos) */
 
 	/* required for usb32 quirk */

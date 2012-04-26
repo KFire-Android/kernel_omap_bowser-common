@@ -36,6 +36,7 @@
 #include <linux/clk.h>
 #endif
 #include "hdmi_ti_4xxx_ip.h"
+#include "hdmi_ti_4xxx_ip_ddc.h"
 
 #if defined(CONFIG_OMAP_REMOTE_PROC_IPU) && defined(CONFIG_RPMSG)
 static bool hdmi_acrwa_registered;
@@ -420,7 +421,8 @@ int hdmi_ti_4xxx_phy_init(struct hdmi_ip_data *ip_data)
 	 * Write to phy address 0 to configure the clock
 	 * use HFBITCLK write HDMI_TXPHY_TX_CONTROL_FREQOUT field
 	 */
-	REG_FLD_MOD(hdmi_phy_base(ip_data), HDMI_TXPHY_TX_CTRL, 0x1, 31, 30);
+	/* For radiated emissions testing passing - Per Customer Request */
+	REG_FLD_MOD(hdmi_phy_base(ip_data), HDMI_TXPHY_TX_CTRL, 0x2, 31, 30);
 
 	/* Write to phy address 1 to start HDMI line (TXVALID and TMDSCLKEN) */
 	hdmi_write_reg(hdmi_phy_base(ip_data),
@@ -449,6 +451,7 @@ static int hdmi_core_ddc_edid(struct hdmi_ip_data *ip_data,
 	char checksum = 0;
 	u32 offset = 0;
 
+#ifdef USE_LOCAL_DDC_READ
 	/* Turn on CLK for DDC */
 	REG_FLD_MOD(hdmi_av_base(ip_data), HDMI_CORE_AV_DPD, 0x7, 2, 0);
 
@@ -541,6 +544,35 @@ static int hdmi_core_ddc_edid(struct hdmi_ip_data *ip_data,
 			j++;
 		}
 	}
+#else
+	/*
+	 * SW HACK : Without the Delay DDC(i2c bus) reads 0 values /
+	 * right shifted values( The behavior is not consistent and seen only
+	 * with some TV's)
+	 */
+	//msleep(300);  /* Not necessary after the reworked the DDC code */
+
+	if (ext % 2 != 0)
+		 offset = 0x80;
+	{
+		struct mddc mddc;
+		i = ext * 128;
+
+		mddc.slaveAddr  = 0xA0;
+		mddc.offset     = ext/2;
+		mddc.regAddr    = offset;
+		mddc.nbytes_lsb = 0x80;
+		mddc.nbytes_msb = 0x0;
+		mddc.dummy      = 0;
+		mddc.pdata      = &pedid[i];
+		if (ext)
+			mddc.cmd = MASTER_CMD_ENH_RD;
+		else
+			mddc.cmd = MASTER_CMD_SEQ_RD;
+
+		ddc_start_transfer(&mddc, DDC_READ);
+	}
+#endif
 
 	for (j = 0; j < 128; j++)
 		checksum += pedid[j];
@@ -586,7 +618,9 @@ EXPORT_SYMBOL(read_ti_4xxx_edid);
 static void hdmi_core_init(enum hdmi_deep_color_mode deep_color,
 			struct hdmi_core_video_config *video_cfg,
 			struct hdmi_core_infoframe_avi *avi_cfg,
-			struct hdmi_core_packet_enable_repeat *repeat_cfg)
+			struct hdmi_core_packet_enable_repeat *repeat_cfg,
+			struct hdmi_video_format *video_fmt,
+			struct hdmi_video_interface *video_int)
 {
 	pr_debug("Enter hdmi_core_init\n");
 
@@ -597,19 +631,25 @@ static void hdmi_core_init(enum hdmi_deep_color_mode deep_color,
 		video_cfg->op_dither_truc = HDMI_OUTPUTTRUNCATION_10BIT;
 		video_cfg->deep_color_pkt = HDMI_DEEPCOLORPACKECTENABLE;
 		video_cfg->pkt_mode = HDMI_PACKETMODE30BITPERPIXEL;
+		video_fmt->packing_mode = HDMI_PACK_10b_RGB_YUV444;
+		video_int->tm = HDMI_TIMING_MASTER_30BIT;
 		break;
 	case HDMI_DEEP_COLOR_36BIT:
 		video_cfg->ip_bus_width = HDMI_INPUT_12BIT;
 		video_cfg->op_dither_truc = HDMI_OUTPUTTRUNCATION_12BIT;
 		video_cfg->deep_color_pkt = HDMI_DEEPCOLORPACKECTENABLE;
 		video_cfg->pkt_mode = HDMI_PACKETMODE36BITPERPIXEL;
+		video_fmt->packing_mode = HDMI_PACK_ALREADYPACKED;
+		video_int->tm = HDMI_TIMING_MASTER_36BIT;
 		break;
 	case HDMI_DEEP_COLOR_24BIT:
 	default:
 		video_cfg->ip_bus_width = HDMI_INPUT_8BIT;
 		video_cfg->op_dither_truc = HDMI_OUTPUTTRUNCATION_8BIT;
 		video_cfg->deep_color_pkt = HDMI_DEEPCOLORPACKECTDISABLE;
-		video_cfg->pkt_mode = HDMI_PACKETMODERESERVEDVALUE;
+		video_cfg->pkt_mode = HDMI_PACKETMODE24BITPERPIXEL;
+		video_fmt->packing_mode = HDMI_PACK_24b_RGB_YUV444_YUV422;
+		video_int->tm = HDMI_TIMING_MASTER_24BIT;
 		break;
 	}
 
@@ -989,7 +1029,7 @@ void hdmi_ti_4xxx_basic_configure(struct hdmi_ip_data *ip_data,
 
 	hdmi_core_init(cfg->deep_color, &v_core_cfg,
 		&avi_cfg,
-		&repeat_cfg);
+		&repeat_cfg, &video_format, &video_interface);
 
 	hdmi_wp_core_interrupt_set(ip_data, HDMI_WP_IRQENABLE_CORE |
 				HDMI_WP_AUDIO_FIFO_UNDERFLOW);
@@ -998,15 +1038,11 @@ void hdmi_ti_4xxx_basic_configure(struct hdmi_ip_data *ip_data,
 
 	hdmi_wp_video_config_timing(ip_data, &video_timing);
 
-	/* video config */
-	video_format.packing_mode = HDMI_PACK_24b_RGB_YUV444_YUV422;
-
 	hdmi_wp_video_config_format(ip_data, &video_format);
 
 	video_interface.vsp = !!(cfg->timings.sync & FB_SYNC_VERT_HIGH_ACT);
 	video_interface.hsp = !!(cfg->timings.sync & FB_SYNC_HOR_HIGH_ACT);
 	video_interface.interlacing = cfg->timings.vmode & FB_VMODE_INTERLACED;
-	video_interface.tm = 1 ; /* HDMI_TIMING_MASTER_24BIT */
 
 	hdmi_wp_video_config_interface(ip_data, &video_interface);
 
@@ -1019,7 +1055,6 @@ void hdmi_ti_4xxx_basic_configure(struct hdmi_ip_data *ip_data,
 	/* power down off */
 	hdmi_core_powerdown_disable(ip_data);
 
-	v_core_cfg.pkt_mode = HDMI_PACKETMODE24BITPERPIXEL;
 	v_core_cfg.hdmi_dvi = cfg->cm.mode;
 
 	hdmi_core_video_config(ip_data, &v_core_cfg);

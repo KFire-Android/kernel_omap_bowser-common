@@ -21,10 +21,14 @@
 #ifndef _HDMI_TI_4xxx_
 #define _HDMI_TI_4xxx_
 
+/* Delay before retry of HDMI detect */
+#define OMAP_HDMI_TIME_TO_RETRY	600
+
 #define HDMI_HPD_LOW		0x10
 #define HDMI_HPD_HIGH		0x20
 #define HDMI_BCAP		0x40
 #define HDMI_RI_ERR		0x80
+#define HDMI_SYNC_LOST		0x100
 enum hdmi_pll_pwr {
 	HDMI_PLLPWRCMD_ALLOFF = 0,
 	HDMI_PLLPWRCMD_PLLONLY = 1,

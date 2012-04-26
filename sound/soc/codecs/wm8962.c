@@ -21,6 +21,7 @@
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/platform_device.h>
+#undef CONFIG_REGULATOR
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
@@ -35,6 +36,10 @@
 #include <trace/events/asoc.h>
 
 #include "wm8962.h"
+/* Should really be in platform data (and implemented in machine driver...) */
+#define HS_DET_GPIO 171
+#define HS_PULSE_GPIO (wm8962->gpio_chip.base + 2)
+
 
 #define WM8962_NUM_SUPPLIES 8
 static const char *wm8962_supply_names[WM8962_NUM_SUPPLIES] = {
@@ -63,8 +68,9 @@ struct wm8962_priv {
 	int fll_fref;
 	int fll_fout;
 
-	struct delayed_work mic_work;
+	struct delayed_work boot_work, mic_work, hook_switch_work, minus_plus_work;
 	struct snd_soc_jack *jack;
+	int insert_gpio;
 
 	struct regulator_bulk_data supplies[WM8962_NUM_SUPPLIES];
 	struct notifier_block disable_nb[WM8962_NUM_SUPPLIES];
@@ -78,7 +84,11 @@ struct wm8962_priv {
 #ifdef CONFIG_GPIOLIB
 	struct gpio_chip gpio_chip;
 #endif
+	bool insertion;
+	bool iphone;
 };
+
+static bool boot_time;
 
 /* We can't use the same notifier block for more than one supply and
  * there's no way I can see to get from a callback to the caller
@@ -819,7 +829,7 @@ static const struct wm8962_reg_access {
 	[22] = { 0x00FF, 0x01FF, 0x0000 }, /* R22    - Right ADC volume */
 	[23] = { 0x0161, 0x0161, 0x0000 }, /* R23    - Additional control(1) */
 	[24] = { 0x0008, 0x0008, 0x0000 }, /* R24    - Additional control(2) */
-	[25] = { 0x07FE, 0x07FE, 0x0000 }, /* R25    - Pwr Mgmt (1) */
+	[25] = { 0x07FE, 0x07FE, 0xFFFF }, /* R25    - Pwr Mgmt (1) */
 	[26] = { 0x01FB, 0x01FB, 0x0000 }, /* R26    - Pwr Mgmt (2) */
 	[27] = { 0x0017, 0x0017, 0x0000 }, /* R27    - Additional Control (3) */
 	[28] = { 0x001C, 0x001C, 0x0000 }, /* R28    - Anti-pop */
@@ -1966,6 +1976,11 @@ static int wm8962_reset(struct snd_soc_codec *codec)
 	return snd_soc_write(codec, WM8962_PLL_SOFTWARE_RESET, 0);
 }
 
+static int wm8962_osc_disable(struct snd_soc_codec *codec)
+{
+	return snd_soc_write(codec, WM8962_PLL2, 0x1);
+}
+
 static const DECLARE_TLV_DB_SCALE(inpga_tlv, -2325, 75, 0);
 static const DECLARE_TLV_DB_SCALE(mixin_tlv, -1500, 300, 0);
 static const unsigned int mixinpga_tlv[] = {
@@ -2092,6 +2107,9 @@ SOC_SINGLE("DAC High Performance Switch", WM8962_ADC_DAC_CONTROL_2, 0, 1, 0),
 
 SOC_SINGLE("ADC High Performance Switch", WM8962_ADDITIONAL_CONTROL_1,
 	   5, 1, 0),
+SOC_SINGLE("DAC L/R Swap Switch", WM8962_AUDIO_INTERFACE_0, 5, 1, 0),
+
+SOC_SINGLE("ADC L/R Swap Switch", WM8962_AUDIO_INTERFACE_0, 8, 1, 0),
 
 SOC_SINGLE_TLV("Beep Volume", WM8962_BEEP_GENERATOR_1, 4, 15, 0, beep_tlv),
 
@@ -2127,6 +2145,10 @@ SOC_SINGLE_TLV("HPMIXR MIXINR Volume", WM8962_HEADPHONE_MIXER_4,
 
 SOC_SINGLE_TLV("Speaker Boost Volume", WM8962_CLASS_D_CONTROL_2, 0, 7, 0,
 	       classd_tlv),
+
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
+SOC_SINGLE("ADC Monomix Switch", WM8962_THREED1, 6, 1, 0),
+#endif
 };
 
 static const struct snd_kcontrol_new wm8962_spk_mono_controls[] = {
@@ -2211,9 +2233,11 @@ static int sysclk_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		if (fll)
+		if (fll) {
 			snd_soc_update_bits(codec, WM8962_FLL_CONTROL_1,
 					    WM8962_FLL_ENA, WM8962_FLL_ENA);
+			msleep(10);
+		}
 		break;
 
 	case SND_SOC_DAPM_POST_PMD:
@@ -2373,7 +2397,22 @@ static int out_pga_event(struct snd_soc_dapm_widget *w,
 	}
 }
 
-static const char *st_text[] = { "None", "Right", "Left" };
+static int micbias_event(struct snd_soc_dapm_widget *w,
+			 struct snd_kcontrol *kcontrol, int event)
+{
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		msleep(5);
+		break;
+	default:
+		break;
+	}
+
+        return 0;
+}
+
+
+static const char *st_text[] = { "None", "Left", "Right" };
 
 static const struct soc_enum str_enum =
 	SOC_ENUM_SINGLE(WM8962_DAC_DSP_MIXING_1, 2, 3, st_text);
@@ -2487,7 +2526,8 @@ SND_SOC_DAPM_INPUT("IN4R"),
 SND_SOC_DAPM_INPUT("Beep"),
 SND_SOC_DAPM_INPUT("DMICDAT"),
 
-SND_SOC_DAPM_MICBIAS("MICBIAS", WM8962_PWR_MGMT_1, 1, 0),
+SND_SOC_DAPM_SUPPLY("MICBIAS", WM8962_PWR_MGMT_1, 1, 0,
+		    micbias_event, SND_SOC_DAPM_POST_PMU),
 
 SND_SOC_DAPM_SUPPLY("Class G", WM8962_CHARGE_PUMP_B, 0, 1, NULL, 0),
 SND_SOC_DAPM_SUPPLY("SYSCLK", WM8962_CLOCKING2, 5, 0, sysclk_event,
@@ -2495,6 +2535,8 @@ SND_SOC_DAPM_SUPPLY("SYSCLK", WM8962_CLOCKING2, 5, 0, sysclk_event,
 SND_SOC_DAPM_SUPPLY("Charge Pump", WM8962_CHARGE_PUMP_1, 0, 0, cp_event,
 		    SND_SOC_DAPM_POST_PMU),
 SND_SOC_DAPM_SUPPLY("TOCLK", WM8962_ADDITIONAL_CONTROL_1, 0, 0, NULL, 0),
+SND_SOC_DAPM_SUPPLY("TEMP_HP", WM8962_ADDITIONAL_CONTROL_4, 2, 0, NULL, 0),
+SND_SOC_DAPM_SUPPLY("TEMP_SPK", WM8962_ADDITIONAL_CONTROL_4, 1, 0, NULL, 0),
 
 SND_SOC_DAPM_MIXER("INPGAL", WM8962_LEFT_INPUT_PGA_CONTROL, 4, 0,
 		   inpgal, ARRAY_SIZE(inpgal)),
@@ -2596,9 +2638,11 @@ static const struct snd_soc_dapm_route wm8962_intercon[] = {
 	{ "ADCR", NULL, "MIXINR" },
 	{ "ADCR", NULL, "DMIC" },
 
+	{ "STL", NULL, "Class G" },
 	{ "STL", "Left", "ADCL" },
 	{ "STL", "Right", "ADCR" },
 
+	{ "STR", NULL, "Class G" },
 	{ "STR", "Left", "ADCL" },
 	{ "STR", "Right", "ADCR" },
 
@@ -2878,7 +2922,7 @@ static int wm8962_set_bias_level(struct snd_soc_codec *codec,
 					    WM8962_BIAS_ENA,
 					    WM8962_BIAS_ENA | 0x180);
 
-			msleep(5);
+			msleep(100);
 
 			snd_soc_update_bits(codec, WM8962_CLOCKING2,
 					    WM8962_CLKREG_OVD,
@@ -2937,12 +2981,18 @@ static int wm8962_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_codec *codec = rtd->codec;
 	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
 	int rate = params_rate(params);
+	int channels = params_channels(params);
 	int i;
 	int aif0 = 0;
 	int adctl3 = 0;
 	int clocking4 = 0;
 
 	wm8962->bclk = snd_soc_params_to_bclk(params);
+	if (channels == 1){
+		dev_dbg(codec->dev, "From upper layer, channels=2\n");
+		wm8962->bclk *= 2;
+	}
+
 	wm8962->lrclk = params_rate(params);
 
 	for (i = 0; i < ARRAY_SIZE(sr_vals); i++) {
@@ -3285,10 +3335,14 @@ static int wm8962_mute(struct snd_soc_dai *dai, int mute)
 	struct snd_soc_codec *codec = dai->codec;
 	int val;
 
-	if (mute)
+	if (mute){
 		val = WM8962_DAC_MUTE;
-	else
-		val = 0;
+		snd_soc_write(codec,WM8962_CHARGE_PUMP_1,0x0);
+	}
+	else {
+	      	val = 0;
+		snd_soc_write(codec,WM8962_CHARGE_PUMP_1,0x1);
+	}
 
 	return snd_soc_update_bits(codec, WM8962_ADC_DAC_CONTROL_1,
 				   WM8962_DAC_MUTE, val);
@@ -3310,14 +3364,14 @@ static struct snd_soc_dai_driver wm8962_dai = {
 	.name = "wm8962",
 	.playback = {
 		.stream_name = "Playback",
-		.channels_min = 2,
+		.channels_min = 1,
 		.channels_max = 2,
 		.rates = WM8962_RATES,
 		.formats = WM8962_FORMATS,
 	},
 	.capture = {
 		.stream_name = "Capture",
-		.channels_min = 2,
+		.channels_min = 1,
 		.channels_max = 2,
 		.rates = WM8962_RATES,
 		.formats = WM8962_FORMATS,
@@ -3325,36 +3379,199 @@ static struct snd_soc_dai_driver wm8962_dai = {
 	.ops = &wm8962_dai_ops,
 	.symmetric_rates = 1,
 };
-
-static void wm8962_mic_work(struct work_struct *work)
+static void accessories_detection (struct snd_soc_codec *codec)
 {
-	struct wm8962_priv *wm8962 = container_of(work,
-						  struct wm8962_priv,
-						  mic_work.work);
-	struct snd_soc_codec *codec = wm8962->codec;
 	int status = 0;
-	int irq_pol = 0;
-	int reg;
+	int reg,temp, val;
+	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
+
+	val = gpio_get_value(wm8962->insert_gpio);
+	if (val) {
+		dev_err(codec->dev, "Detected insertion\n");
+		wm8962->insertion = true;
+		/*
+		 * We've got an accessory inserted, enable the
+		 * microphone bias and clock the CODEC to do
+		 * detection.
+		 */
+		mutex_lock(&codec->mutex);
+		snd_soc_dapm_disable_pin(&codec->dapm, "SYSCLK");
+		snd_soc_dapm_sync(&codec->dapm);
+	        reg = snd_soc_read(codec,WM8962_PWR_MGMT_1);
+		dev_crit(codec->dev, "before enable, MICBIAS=%x\n", reg);
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "MICBIAS");
+		snd_soc_dapm_sync(&codec->dapm);
+		reg = snd_soc_read(codec, WM8962_PWR_MGMT_1);
+		dev_crit(codec->dev, "after enable, MICBIAS=%x\n", reg);
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "SYSCLK");
+		snd_soc_dapm_sync(&codec->dapm);
+		mutex_unlock(&codec->mutex);
+
+		msleep(100); /*debouncing*/
+
+		/*Mark iphone4 or not*/
+		reg = snd_soc_read(codec, WM8962_ADDITIONAL_CONTROL_4);
+
+		if (reg & WM8962_MICDET_STS || reg & WM8962_MICSHORT_STS ){
+		        dev_err(codec->dev, "this is not iphone 4!!!\n");
+			wm8962->iphone = false;
+		}else{
+			/* might be iphone4 Pulse GPIO3 to kick MICBIAS high */
+			gpio_set_value_cansleep(HS_PULSE_GPIO, 1);
+			msleep(1);
+			gpio_set_value_cansleep(HS_PULSE_GPIO, 0);
+		}
+	} else {
+	        dev_err(codec->dev, "Detected removal\n");
+
+		/*disable both micdec and micscd irqs*/
+		snd_soc_update_bits(codec, WM8962_INTERRUPT_STATUS_2_MASK,
+						WM8962_IM_MICSCD_EINT_MASK | WM8962_IM_MICD_EINT_MASK ,
+						    1<<WM8962_IM_MICSCD_EINT_SHIFT | 1<<WM8962_IM_MICD_EINT_SHIFT);
+
+		/*cancel any delayed work to avoid false triggers*/
+		cancel_delayed_work_sync(&wm8962->hook_switch_work);
+	        cancel_delayed_work_sync(&wm8962->minus_plus_work);
+		wm8962->iphone = true; /*prepare for next insertion detection*/
+		wm8962->insertion = false;
+	}
 
 	reg = snd_soc_read(codec, WM8962_ADDITIONAL_CONTROL_4);
 
-	if (reg & WM8962_MICDET_STS) {
-		status |= SND_JACK_MICROPHONE;
-		irq_pol |= WM8962_MICD_IRQ_POL;
+	if (wm8962->iphone == false){
+		if (wm8962->insertion == true){
+
+			if (reg & WM8962_MICSHORT_STS) {
+			  /*it is a headphone make sure micscd is disabled*/
+				status |= SND_JACK_HEADPHONE;
+				wm8962->insertion = false;
+			        snd_soc_update_bits(codec, WM8962_INTERRUPT_STATUS_2_MASK,
+						    WM8962_IM_MICSCD_EINT_MASK,
+						    WM8962_IM_MICSCD_EINT);
+			}
+			else if (reg & WM8962_MICDET_STS) {
+				status |= SND_JACK_HEADSET ;
+				wm8962->insertion = false;
+
+				snd_soc_update_bits(codec, WM8962_ADDITIONAL_CONTROL_4,
+						    WM8962_MICDET_ENA, WM8962_MICDET_ENA);
+
+	                        /*clear all interrupt*/
+				snd_soc_write(codec,WM8962_INTERRUPT_STATUS_2, 0xFFFF);
+
+				/*enable micscd*/
+				snd_soc_update_bits(codec, WM8962_INTERRUPT_STATUS_2_MASK,
+						    WM8962_IM_MICSCD_EINT_MASK,
+						    0<<WM8962_IM_MICSCD_EINT_SHIFT );
+			}
+		} 
+
+		dev_crit(codec->dev, "Microphone report %x\n", status);
+		snd_soc_jack_report(wm8962->jack, status,
+			     SND_JACK_HEADPHONE | SND_JACK_HEADSET);
+
+	} else {
+	  /*it is a iphone4 headset*/
+		if (wm8962->insertion == true){
+			if (reg & WM8962_MICSHORT_STS) {
+				dev_crit(codec->dev,"iphone4 but short detected, \
+				should never happen!!!!");
+			}
+			else if (reg & WM8962_MICDET_STS) {
+				dev_crit(codec->dev,"iphone insertion detected");
+				status |= SND_JACK_HEADSET ;
+				wm8962->insertion = false;
+
+				/*clear all interrupt*/
+				snd_soc_write(codec,WM8962_INTERRUPT_STATUS_2, 0xFFFF);
+
+				/*enable both micd and micscd*/
+				snd_soc_update_bits(codec, WM8962_INTERRUPT_STATUS_2_MASK,
+						    WM8962_IM_MICSCD_EINT_MASK | WM8962_IM_MICD_EINT_MASK,
+						    0<<WM8962_IM_MICSCD_EINT_SHIFT | 0<<WM8962_IM_MICD_EINT_SHIFT);
+			}
+		} 
+		dev_crit(codec->dev, "Iphone report %x\n", status);
+		snd_soc_jack_report(wm8962->jack, status,
+			     SND_JACK_HEADPHONE | SND_JACK_HEADSET);
 	}
 
-	if (reg & WM8962_MICSHORT_STS) {
-		status |= SND_JACK_BTN_0;
-		irq_pol |= WM8962_MICSCD_IRQ_POL;
+	if (status==0){
+		/*mask (diable) micshort and micd irq*/
+		snd_soc_update_bits(codec, WM8962_INTERRUPT_STATUS_2_MASK,
+				    WM8962_IM_MICSCD_EINT_MASK | WM8962_IM_MICD_EINT_MASK ,
+				    1<<WM8962_IM_MICSCD_EINT_SHIFT | 1<<WM8962_IM_MICD_EINT_SHIFT);
+
+		/*clean up MICSD and MICD caused by false triggers*/
+		temp = snd_soc_read(codec, WM8962_INTERRUPT_STATUS_2) & WM8962_MICSCD_EINT & WM8962_MICD_EINT;
+		snd_soc_write(codec, WM8962_INTERRUPT_STATUS_2, temp);
+
+		/*clean up any unmatched polarities*/
+		snd_soc_update_bits(codec, WM8962_MICINT_SOURCE_POL,WM8962_MICSCD_IRQ_POL, 0);
+		snd_soc_update_bits(codec, WM8962_MICINT_SOURCE_POL,WM8962_MICD_IRQ_POL, 0);
+
+		mutex_lock(&codec->mutex);
+		snd_soc_dapm_disable_pin(&codec->dapm, "SYSCLK");
+	        snd_soc_dapm_disable_pin(&codec->dapm, "MICBIAS");
+		snd_soc_dapm_sync(&codec->dapm);
+		mutex_unlock(&codec->mutex);
 	}
-
-	snd_soc_jack_report(wm8962->jack, status,
-			    SND_JACK_MICROPHONE | SND_JACK_BTN_0);
-
-	snd_soc_update_bits(codec, WM8962_MICINT_SOURCE_POL,
-			    WM8962_MICSCD_IRQ_POL |
-			    WM8962_MICD_IRQ_POL, irq_pol);
 }
+
+static void wm8962_mic_work(struct work_struct *work)
+{
+	struct wm8962_priv *wm8962 = container_of(work, 
+						  struct wm8962_priv,
+						  mic_work.work);
+	struct snd_soc_codec *codec = wm8962->codec;
+	accessories_detection(codec);
+}
+
+static void wm8962_hook_switch_report(struct work_struct *work)
+{
+	struct wm8962_priv *wm8962 = container_of(work, struct wm8962_priv,
+					    hook_switch_work.work);
+	struct snd_soc_codec *codec = wm8962->codec;
+	int reg, micscd_irq_pol = 0;
+	dev_crit(codec->dev, "%s called", __func__);
+	reg = snd_soc_read(codec, WM8962_ADDITIONAL_CONTROL_4);
+	if (reg & WM8962_MICSHORT_STS) {
+		/*hook switch button pressing*/
+		dev_crit(codec->dev, "hook swtich or regular volume button detected\n");
+		snd_soc_jack_report(wm8962->jack, SND_JACK_BTN_0, SND_JACK_BTN_0);
+		micscd_irq_pol |= WM8962_MICSCD_IRQ_POL;
+	} else {
+		dev_crit(codec->dev, "hookswtich/regularvolume release or not hold long enough\n");
+		snd_soc_jack_report(wm8962->jack, ~SND_JACK_BTN_0, SND_JACK_BTN_0);
+		if (wm8962->iphone == true){
+			gpio_set_value_cansleep(HS_PULSE_GPIO, 1);
+			msleep(5);
+			gpio_set_value_cansleep(HS_PULSE_GPIO, 0);
+		}
+	}
+	/*update polarity bit in order to generate IRQ for next press/release */
+	snd_soc_update_bits(codec, WM8962_MICINT_SOURCE_POL,WM8962_MICSCD_IRQ_POL, micscd_irq_pol);
+}
+
+static void wm8962_minus_plus_report(struct work_struct *work)
+{
+	struct wm8962_priv *wm8962 = container_of(work, struct wm8962_priv,
+					    minus_plus_work.work);
+	struct snd_soc_codec *codec = wm8962->codec;
+	int reg, micd_irq_pol = 0;
+	reg = snd_soc_read(codec, WM8962_ADDITIONAL_CONTROL_4);
+
+	if (reg & WM8962_MICDET_STS) {
+		dev_crit(codec->dev, "iphone4 inserted and +/- pressed\n");
+		micd_irq_pol |= WM8962_MICD_IRQ_POL;
+	} else {
+		dev_crit(codec->dev, "iphone4 inserted and +/- released \
+		                     or not hold long enought\n");
+	}
+	/*update polarity bit in order to generate IRQ for next press/release */
+	snd_soc_update_bits(codec, WM8962_MICINT_SOURCE_POL,WM8962_MICD_IRQ_POL, micd_irq_pol);
+}
+
 
 static irqreturn_t wm8962_irq(int irq, void *data)
 {
@@ -3362,14 +3579,14 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
 	int mask;
 	int active;
-
+	dev_err(codec->dev, "mutex locked %s\n", __func__);
+	mutex_lock(&codec->mutex);
 	mask = snd_soc_read(codec, WM8962_INTERRUPT_STATUS_2_MASK);
-
 	active = snd_soc_read(codec, WM8962_INTERRUPT_STATUS_2);
 	active &= ~mask;
 
 	if (active & WM8962_FLL_LOCK_EINT) {
-		dev_dbg(codec->dev, "FLL locked\n");
+		dev_err(codec->dev, "FLL locked now disable FLL lock irq\n");
 		complete(&wm8962->fll_lock);
 	}
 
@@ -3379,25 +3596,38 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 	if (active & WM8962_TEMP_SHUT_EINT)
 		dev_crit(codec->dev, "Thermal shutdown\n");
 
-	if (active & (WM8962_MICSCD_EINT | WM8962_MICD_EINT)) {
-		dev_dbg(codec->dev, "Microphone event detected\n");
-
-#ifndef CONFIG_SND_SOC_WM8962_MODULE
-		trace_snd_soc_jack_irq(dev_name(codec->dev));
-#endif
-
-		pm_wakeup_event(codec->dev, 300);
-
-		schedule_delayed_work(&wm8962->mic_work,
-				      msecs_to_jiffies(250));
+	if (active & (WM8962_MICSCD_EINT)) {
+		dev_crit(codec->dev,"will call hook_switch_work\n");
+		schedule_delayed_work(&wm8962->hook_switch_work,
+				      msecs_to_jiffies(500));
 	}
 
+	if (active & (WM8962_MICD_EINT)){
+		dev_crit(codec->dev, "will call minus_plus_work\n");
+		schedule_delayed_work(&wm8962->minus_plus_work,
+				      msecs_to_jiffies(500));
+	}
 	/* Acknowledge the interrupts */
 	snd_soc_write(codec, WM8962_INTERRUPT_STATUS_2, active);
+	mutex_unlock(&codec->mutex);
+	dev_err(codec->dev, "mutex unlocked %s\n", __func__);
 
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t wm8962_insert_irq(int irq, void *data)
+{
+	struct snd_soc_codec *codec = data;
+	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
+
+	mutex_lock(&codec->mutex);
+	dev_err(codec->dev, "mutex locked %s\n", __func__);
+	schedule_delayed_work(&wm8962->mic_work,
+				      msecs_to_jiffies(250));
+	mutex_unlock(&codec->mutex);
+	dev_err(codec->dev, "mutex unlocked %s\n", __func__);
+        return IRQ_HANDLED;
+}
 /**
  * wm8962_mic_detect - Enable microphone detection via the WM8962 IRQ
  *
@@ -3414,33 +3644,61 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 int wm8962_mic_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack)
 {
 	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
-	int irq_mask, enable;
 
+	dev_err(codec->dev, "%s is called", __func__);
 	wm8962->jack = jack;
 	if (jack) {
-		irq_mask = 0;
-		enable = WM8962_MICDET_ENA;
-	} else {
-		irq_mask = WM8962_MICD_EINT | WM8962_MICSCD_EINT;
-		enable = 0;
+		snd_soc_update_bits(codec, WM8962_ADDITIONAL_CONTROL_4,
+				    WM8962_MICDET_ENA, WM8962_MICDET_ENA);
+		msleep(50);
 	}
-
-	snd_soc_update_bits(codec, WM8962_INTERRUPT_STATUS_2_MASK,
-			    WM8962_MICD_EINT | WM8962_MICSCD_EINT, irq_mask);
-	snd_soc_update_bits(codec, WM8962_ADDITIONAL_CONTROL_4,
-			    WM8962_MICDET_ENA, enable);
-
-	/* Send an initial empty report */
-	snd_soc_jack_report(wm8962->jack, 0,
-			    SND_JACK_MICROPHONE | SND_JACK_BTN_0);
-
+	accessories_detection(codec);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wm8962_mic_detect);
 
+int wm8962_get_jack(struct snd_soc_codec *codec, struct snd_soc_jack *jack)
+{
+	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
+
+	wm8962->jack = jack;
+	return (!jack);
+}
+EXPORT_SYMBOL_GPL(wm8962_get_jack);
+
+static void wm8962_mic_detect_boot_work(struct work_struct *work)
+{
+        struct wm8962_priv *wm8962 = container_of(work, struct wm8962_priv, 
+					    boot_work.work);
+	struct snd_soc_codec *codec = wm8962->codec;
+
+	if (wm8962->jack==NULL){
+	  dev_err (codec->dev, "jack not initialized!!!");
+	  return;
+	}
+	dev_err(codec->dev, "bootup time %s is called!!!!!!!!!!!!!!!!!!", __func__);
+	snd_soc_update_bits(codec, WM8962_ADDITIONAL_CONTROL_4,
+				    WM8962_MICDET_ENA, WM8962_MICDET_ENA);
+
+	/* Send an initial empty report */
+	snd_soc_jack_report(wm8962->jack, 0,
+			    SND_JACK_HEADSET | SND_JACK_HEADPHONE);
+
+	/*mutex_lock(&codec->mutex);
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "SYSCLK");
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "MICBIAS");
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);*/
+
+	schedule_delayed_work(&wm8962->mic_work, msecs_to_jiffies(250));
+	return;
+}
+
+
 #ifdef CONFIG_PM
 static int wm8962_resume(struct snd_soc_codec *codec)
 {
+	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
 	u16 *reg_cache = codec->reg_cache;
 	int i;
 
@@ -3457,9 +3715,22 @@ static int wm8962_resume(struct snd_soc_codec *codec)
 			snd_soc_write(codec, i, reg_cache[i]);
 	}
 
+	dev_dbg(codec->dev, "Enable gpio irq in %s\n", __func__);
+	enable_irq(gpio_to_irq(wm8962->insert_gpio));
+
 	return 0;
 }
+static int wm8962_suspend(struct snd_soc_codec *codec, pm_message_t state)
+{
+       struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
+       dev_dbg(codec->dev, "enter %s, disable gpio irq\n", __func__);
+       /*make sure even system wakeup, interrupt routine won't excute*/ 
+       disable_irq(gpio_to_irq(wm8962->insert_gpio));
+       return 0;
+}
+
 #else
+#define wm8962_suspend NULL
 #define wm8962_resume NULL
 #endif
 
@@ -3733,6 +4004,36 @@ static void wm8962_free_gpio(struct snd_soc_codec *codec)
 }
 #endif
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
+static ssize_t wm8962_headset_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct wm8962_priv *wm8962 = dev_get_drvdata(dev);
+	struct snd_soc_codec *codec = wm8962->codec;
+	int status = 0;
+	int reg;
+
+	#define WM8962_HEADSET_STATUS		0x01
+	#define WM8962_HOOKKEY_STATUS		0x10
+
+	reg = snd_soc_read(codec, WM8962_ADDITIONAL_CONTROL_4);
+
+	if (reg & WM8962_MICDET_STS) {
+		status |= WM8962_HEADSET_STATUS;
+	}
+
+	if (reg & WM8962_MICSHORT_STS) {
+		status |= WM8962_HOOKKEY_STATUS;
+	}
+
+	dev_dbg(codec->dev, "wm8962_headset_show(): ststus=0x%X\n", status);
+
+	return sprintf(buf, "%d\n", status);
+}
+
+static DEVICE_ATTR(headset, 0644, wm8962_headset_show, NULL);
+#endif
+
 static int wm8962_probe(struct snd_soc_codec *codec)
 {
 	int ret;
@@ -3744,12 +4045,20 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 	int i, trigger, irq_pol;
 	bool dmicclk, dmicdat;
 
+	boot_time=true;
 	wm8962->codec = codec;
 	INIT_DELAYED_WORK(&wm8962->mic_work, wm8962_mic_work);
+	INIT_DELAYED_WORK(&wm8962->hook_switch_work, wm8962_hook_switch_report);
+	INIT_DELAYED_WORK(&wm8962->minus_plus_work, wm8962_minus_plus_report);
+	INIT_DELAYED_WORK(&wm8962->boot_work, wm8962_mic_detect_boot_work);
+
 	init_completion(&wm8962->fll_lock);
 
 	codec->cache_sync = 1;
 	codec->dapm.idle_bias_off = 1;
+
+	wm8962->insertion = false;
+	wm8962->iphone = true;
 
 	ret = snd_soc_codec_set_cache_io(codec, 16, 16, SND_SOC_I2C);
 	if (ret != 0) {
@@ -3834,6 +4143,13 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 			    WM8962_OSC_ENA | WM8962_PLL2_ENA | WM8962_PLL3_ENA,
 			    0);
 
+	/* Ensure we have soft control over all registers */
+	snd_soc_update_bits(codec, WM8962_CLOCKING2,
+			    WM8962_CLKREG_OVD, WM8962_CLKREG_OVD);
+
+	/* Ensure that the oscillator and PLLs are disabled */
+	wm8962_osc_disable(codec);
+
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
 
 	if (pdata) {
@@ -3858,7 +4174,7 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 					    WM8962_MICDET_THR_MASK |
 					    WM8962_MICSHORT_THR_MASK |
 					    WM8962_MICBIAS_LVL,
-					    pdata->mic_cfg);
+					    pdata->mic_cfg| 0x1<<WM8962_MICSHORT_THR_SHIFT);
 	}
 
 	/* Latch volume update bits */
@@ -3882,6 +4198,12 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 			    WM8962_HPOUT_VU, WM8962_HPOUT_VU);
 	snd_soc_update_bits(codec, WM8962_HPOUTR_VOLUME,
 			    WM8962_HPOUT_VU, WM8962_HPOUT_VU);
+
+	/* Don't debouce interrupts so we don't need SYSCLK */
+	snd_soc_update_bits(codec, WM8962_IRQ_DEBOUNCE,
+			    WM8962_FLL_LOCK_DB | WM8962_PLL3_LOCK_DB |
+			    WM8962_PLL2_LOCK_DB | WM8962_TEMP_SHUT_DB,
+			    0);
 
 	wm8962_add_widgets(codec);
 
@@ -3911,6 +4233,12 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 	wm8962_init_beep(codec);
 	wm8962_init_gpio(codec);
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
+	ret = device_create_file(codec->dev, &dev_attr_headset);
+	if (ret != 0)
+		dev_err(codec->dev, "Failed to register headset\n");
+#endif
+
 	if (i2c->irq) {
 		if (pdata && pdata->irq_active_low) {
 			trigger = IRQF_TRIGGER_LOW;
@@ -3939,7 +4267,61 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 					    WM8962_FIFOS_ERR_EINT, 0);
 		}
 	}
+	if (wm8962->gpio_chip.base >= 0) {
+		ret = gpio_request(HS_PULSE_GPIO, "HS pulse");
+		if (ret != 0) {
+			dev_err(codec->dev,
+				"Failed to request HS pulse GPIO: %d\n", ret);
+		}
 
+		ret = gpio_direction_output(HS_PULSE_GPIO, 0);
+		if (ret < 0) {
+			dev_err(codec->dev,
+			        "Failed to set pulse GPIO output: %d\n", ret);
+		}
+
+		ret = gpio_request(HS_DET_GPIO, "HS detect");
+                if (ret != 0) {
+			dev_err(codec->dev,
+			        "Failed to request HS det GPIO: %d\n", ret);
+		}
+
+		ret = gpio_direction_input(HS_DET_GPIO);
+		if (ret != 0) {
+			dev_err(codec->dev,
+				"Failed to set det GPIO input: %d\n", ret);
+		}
+	}
+
+	wm8962->insert_gpio = HS_DET_GPIO;
+
+	if  (wm8962->insert_gpio){
+
+		 /* Bootstrap the insertion state 
+		    wm8962_insert_irq(gpio_to_irq(wm8962->insert_gpio), codec);*/
+
+		ret = request_threaded_irq(gpio_to_irq(wm8962->insert_gpio),
+					   NULL, wm8962_insert_irq,
+			                   IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+			                   IRQF_ONESHOT, "wm8962 insert",
+			                   codec);
+		if (ret != 0) {
+			dev_err(codec->dev, "Failed to request insert IRQ: %d\n",
+				ret);
+		}
+	}
+
+	/*to save more power*/
+	snd_soc_update_bits(codec, WM8962_ANALOGUE_CLOCKING1,
+			    WM8962_CLKOUT5_SEL_MASK, 
+			    1<<WM8962_CLKOUT5_SEL_SHIFT);
+	snd_soc_write(codec, 0xFD, 0x0002);
+	snd_soc_write(codec, 0xCC, 0x0040);
+	snd_soc_write(codec, 0xFD, 0x0);
+	snd_soc_write(codec, WM8962_CLOCKING_4, 0x50A);
+
+	schedule_delayed_work(&wm8962->boot_work,
+				      msecs_to_jiffies(5000));
 	return 0;
 
 err_enable:
@@ -3957,10 +4339,16 @@ static int wm8962_remove(struct snd_soc_codec *codec)
 					      dev);
 	int i;
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
+	device_remove_file(codec->dev, &dev_attr_headset);
+#endif
+
 	if (i2c->irq)
 		free_irq(i2c->irq, codec);
 
 	cancel_delayed_work_sync(&wm8962->mic_work);
+	cancel_delayed_work_sync(&wm8962->hook_switch_work);
+	cancel_delayed_work_sync(&wm8962->minus_plus_work);
 
 	wm8962_free_gpio(codec);
 	wm8962_free_beep(codec);
@@ -3975,6 +4363,7 @@ static int wm8962_remove(struct snd_soc_codec *codec)
 static struct snd_soc_codec_driver soc_codec_dev_wm8962 = {
 	.probe =	wm8962_probe,
 	.remove =	wm8962_remove,
+	.suspend =      wm8962_suspend,
 	.resume =	wm8962_resume,
 	.set_bias_level = wm8962_set_bias_level,
 	.reg_cache_size = WM8962_MAX_REGISTER + 1,
@@ -3991,10 +4380,12 @@ static __devinit int wm8962_i2c_probe(struct i2c_client *i2c,
 {
 	struct wm8962_priv *wm8962;
 	int ret;
-
+printk(KERN_DEBUG"wm8962_i2c_probe calling!!!!!\n");
 	wm8962 = kzalloc(sizeof(struct wm8962_priv), GFP_KERNEL);
-	if (wm8962 == NULL)
-		return -ENOMEM;
+	if (wm8962 == NULL){
+	  printk(KERN_ERR"wm8962_i2c_probe kzalloc failed!\n");
+	  return -ENOMEM;
+	}
 
 	i2c_set_clientdata(i2c, wm8962);
 

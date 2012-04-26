@@ -2341,10 +2341,155 @@ static int tcp_seq_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+typedef struct __reset_port_skip_tag {
+	__u16 port;
+	struct __reset_port_skip_tag *next;
+} __reset_port_skip;
+
+static void tcp_force_reset(int skip_lh, __reset_port_skip *rps)
+{
+	unsigned int bucket;
+
+	for (bucket = 0; bucket <= tcp_hashinfo.ehash_mask; bucket++) {
+		struct sock *sk;
+		const struct hlist_nulls_node *node;
+		spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
+
+restart:
+		spin_lock_bh(lock);
+		sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
+			int reset = 1;
+
+			struct inet_sock *inet = inet_sk(sk);
+
+			if (skip_lh && ipv4_is_loopback(inet->inet_saddr)) {
+				reset = 0;
+			}
+
+			if (reset) {
+				__reset_port_skip *r = rps;
+				while (r != NULL) {
+					// Comparing skip list with local port
+					if (r->port == inet->inet_num) {
+						printk("skipping TCP reset for port %d\n", r->port);
+
+						reset = 0;
+						break;
+					}
+
+					r = r->next;
+				}
+			}
+
+			if (reset) {
+				sock_hold(sk);
+				spin_unlock_bh(lock);
+
+				local_bh_disable();
+				bh_lock_sock(sk);
+				tcp_send_active_reset(sk, GFP_ATOMIC);
+
+				sk->sk_err = ETIMEDOUT;
+				sk->sk_error_report(sk);
+
+				tcp_done(sk);
+				bh_unlock_sock(sk);
+				local_bh_enable();
+				sock_put(sk);
+
+				goto restart;
+			}
+		}
+		spin_unlock_bh(lock);
+	}
+}
+
+#define N_PROC_TCPRESET			"reset"
+#define N_PROC_TCPRESET_MAX		2
+static struct proc_dir_entry *proc_tcpreset[N_PROC_TCPRESET_MAX];
+int proc_tcpreset_count = 0;
+
+static int
+proc_tcpreset_write(
+	struct file *file,
+	const char __user *buf,
+	unsigned long count,
+	void *data)
+{
+	char lbuf[256], *p;
+	int len;
+
+	if (count >= sizeof(lbuf)) {
+		return -E2BIG;
+	}
+
+	memset(lbuf, 0, sizeof(lbuf));
+
+	len = min((int)count, (int)(sizeof(lbuf) - 1));
+
+	if (copy_from_user(lbuf, buf, len)) {
+		return -EFAULT;
+	}
+
+	p = lbuf;
+
+	if (*p++ == '4') {
+		int reset_mode = -1;
+
+		if (*p == '2') {
+			reset_mode = 0;
+		} else if (*p == '3') {
+			reset_mode = 1;
+		}
+
+		if (reset_mode != -1) {
+			__reset_port_skip *rps = NULL;
+			char *q;
+
+			if (p[1] == ',') {
+				++p;
+			}
+
+			do {
+				unsigned long v;
+
+				q = strchr(++p, ',');
+				if (q != NULL) {
+					*q = '\0';
+				}
+
+				v = simple_strtoul(p, NULL, 10);
+				if (v != 0) {
+					__reset_port_skip *r =
+					kmalloc(sizeof(__reset_port_skip), GFP_ATOMIC);
+					if (r != NULL) {
+						r->next = rps;
+						r->port = (__u16)v;
+						rps = r;
+					}
+				}
+
+				p = q;
+			} while (p != NULL);
+
+			tcp_force_reset(reset_mode, rps);
+
+			while (rps != NULL) {
+				__reset_port_skip *next = rps->next;
+				kfree(rps);
+				rps = next;
+			}
+		}
+	}
+
+	return count;
+}
+
 int tcp_proc_register(struct net *net, struct tcp_seq_afinfo *afinfo)
 {
 	int rc = 0;
 	struct proc_dir_entry *p;
+	char proc_name[32];
 
 	afinfo->seq_fops.open		= tcp_seq_open;
 	afinfo->seq_fops.read		= seq_read;
@@ -2359,13 +2504,39 @@ int tcp_proc_register(struct net *net, struct tcp_seq_afinfo *afinfo)
 			     &afinfo->seq_fops, afinfo);
 	if (!p)
 		rc = -ENOMEM;
+
+	sprintf(proc_name, "%s%s", afinfo->name, N_PROC_TCPRESET);
+
+	if (proc_tcpreset_count < N_PROC_TCPRESET_MAX) {
+		proc_tcpreset[proc_tcpreset_count] = create_proc_entry(proc_name, S_IWUGO, NULL);
+		if (proc_tcpreset[proc_tcpreset_count] != NULL) {
+			proc_tcpreset[proc_tcpreset_count]->data = afinfo;
+			proc_tcpreset[proc_tcpreset_count]->read_proc = NULL;
+			proc_tcpreset[proc_tcpreset_count]->write_proc = proc_tcpreset_write;
+			proc_tcpreset_count++;
+		}
+	}
+
 	return rc;
 }
 EXPORT_SYMBOL(tcp_proc_register);
 
 void tcp_proc_unregister(struct net *net, struct tcp_seq_afinfo *afinfo)
 {
+	char proc_name[32];
+	int i = 0;
+
 	proc_net_remove(net, afinfo->name);
+	
+	while (i < proc_tcpreset_count && proc_tcpreset[i] != NULL && proc_tcpreset[i]->data != afinfo)
+		i++;
+ 	if (i < N_PROC_TCPRESET_MAX) {
+		sprintf(proc_name, "%s%s", afinfo->name, N_PROC_TCPRESET);
+		remove_proc_entry(proc_name, NULL);
+
+		proc_tcpreset[i] = NULL;
+		proc_tcpreset_count--;
+	}
 }
 EXPORT_SYMBOL(tcp_proc_unregister);
 

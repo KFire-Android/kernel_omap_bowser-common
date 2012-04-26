@@ -30,6 +30,7 @@
 
 #include "../ion_priv.h"
 #include <asm/cacheflush.h>
+#include <linux/dma-mapping.h>
 
 #define TILER_ENABLE_NON_PAGE_ALIGNED_ALLOCATIONS  1
 
@@ -230,6 +231,22 @@ int omap_tiler_alloc(struct ion_heap *heap,
 				__func__, n_tiler_pages);
 	}
 
+        /* MKE Invalidate cache */
+        {
+            int i;
+            for (i = 0; i < n_phys_pages; ++i) {
+		u32 paddr = info->phys_addrs[i];
+		size_t len = PAGE_SIZE;
+		outer_inv_range(paddr, paddr + len);
+            }
+            for (i = 0; i < n_tiler_pages; ++i) {
+		u32 vaddr = info->tiler_addrs[i];
+		phys_addr_t paddr = tiler_virt2phys(vaddr);
+		size_t len = PAGE_SIZE;
+		outer_inv_range(paddr, paddr + len);
+		//dmac_map_area((const void*) vaddr, len, DMA_FROM_DEVICE);
+            }
+        }
 	return 0;
 
 err:
@@ -342,6 +359,7 @@ int omap_tiler_cache_operation(struct ion_buffer *buffer, size_t len,
 {
 	struct omap_tiler_info *info;
 	int n_pages;
+        phys_addr_t paddr = tiler_virt2phys(vaddr);
 
 	if (!buffer) {
 		pr_err("%s(): buffer is NULL\n", __func__);
@@ -371,20 +389,21 @@ int omap_tiler_cache_operation(struct ion_buffer *buffer, size_t len,
 		return -EINVAL;
 	}
 
+#if 0
 	if (len > FULL_CACHE_FLUSH_THRESHOLD) {
 		on_each_cpu(per_cpu_cache_flush_arm, NULL, 1);
 		outer_flush_all();
 		return 0;
 	}
+#endif
 
-	flush_cache_user_range(vaddr, vaddr + len);
-
-	if (cacheop == CACHE_FLUSH)
-		outer_flush_range(info->tiler_addrs[0],
-			info->tiler_addrs[0] + len);
-	else
-		outer_inv_range(info->tiler_addrs[0],
-			info->tiler_addrs[0] + len);
+	if (cacheop == CACHE_FLUSH) {
+		flush_cache_user_range(vaddr, vaddr + len);
+		outer_flush_range(paddr, paddr + len);
+        } else {
+		outer_inv_range(paddr, paddr + len);
+		dmac_map_area((const void*) vaddr, len, DMA_FROM_DEVICE);
+        }
 	return 0;
 }
 

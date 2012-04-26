@@ -501,4 +501,12 @@ config SBNI_MULTILINE
 
 	  If unsure, say N.
 
+config BWAN
+	tristate "BWAN modem support"
+	default m
+	help
+	  Manipulates the WAN modem. The driver exposes an interface to
+	  power on/off the modem and set up USB connectivity to send
+	  commands to the modem.
+
 endif # WAN

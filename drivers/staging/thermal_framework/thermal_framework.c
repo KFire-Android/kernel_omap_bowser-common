@@ -24,11 +24,17 @@
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
+#include <linux/uaccess.h>
 
 #include <linux/thermal_framework.h>
 
 static LIST_HEAD(thermal_domain_list);
 static DEFINE_MUTEX(thermal_domain_list_lock);
+
+static struct class *thermal_framework_class = NULL;
+static atomic_t thermal_sensor_device_index;
+#define THERMAL_FWK_NAME   "thermal_sensor"
+#define THERMAL_FWK_DEV_FORMAT THERMAL_FWK_NAME "%d"
 
 /**
  * DOC: Introduction
@@ -124,6 +130,106 @@ static int thermal_debug_domain(struct thermal_domain *domain)
 		thermal_domains_dbg, (void *)domain, &thermal_debug_fops));
 }
 
+static int thermal_remove_cooling_action(struct thermal_dev *tdev,
+						unsigned int priority)
+{
+	struct thermal_cooling_action *action, *tmp;
+
+	list_for_each_entry_safe(action, tmp, &tdev->cooling_actions, node) {
+		if (action->priority == priority) {
+			list_del(&action->node);
+			debugfs_remove(action->d);
+			kfree(action);
+			break;
+		}
+	}
+
+	return 0;
+}
+
+static int thermal_add_action_debug(struct thermal_cooling_action *action,
+					struct dentry *d)
+{
+	char buf[32];
+
+	sprintf(buf, "action_%d", action->priority);
+
+	action->d = debugfs_create_u32(buf, S_IRUGO, d,
+					(u32 *)&action->reduction);
+
+	return PTR_ERR(action->d);
+}
+
+static int thermal_insert_cooling_action(struct thermal_dev *tdev,
+						unsigned int priority,
+						unsigned int reduction,
+						struct dentry *d)
+{
+	struct list_head *head = &tdev->cooling_actions;
+	struct thermal_cooling_action *action, *new;
+
+	list_for_each_entry(action, &tdev->cooling_actions, node) {
+		if (action->priority > priority)
+			break;
+		else
+			head = &action->node;
+	}
+
+	new = kzalloc(sizeof(struct thermal_cooling_action), GFP_KERNEL);
+	if (!new)
+		return -ENOMEM;
+	new->priority = priority;
+	new->reduction = reduction;
+	list_add(&new->node, head);
+
+	return thermal_add_action_debug(new, d);
+}
+
+static ssize_t thermal_debug_inject_action_write(struct file *file,
+				const char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	struct thermal_dev *tdev = file->private_data;
+	unsigned int priority;
+	int reduction;
+	char buf[32];
+	ssize_t len;
+
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+		return -EFAULT;
+
+	buf[len] = '\0';
+	if (sscanf(buf, "%u %d", &priority, &reduction) != 2)
+		return -EINVAL;
+
+	/* I know, there is a better way to lock this stuff */
+	mutex_lock(&thermal_domain_list_lock);
+	if (reduction < 0)
+		thermal_remove_cooling_action(tdev, priority);
+	else
+		thermal_insert_cooling_action(tdev, priority, reduction,
+						file->f_path.dentry->d_parent);
+	mutex_unlock(&thermal_domain_list_lock);
+
+	return count;
+}
+
+static int thermal_debug_inject_action_open(struct inode *inode,
+							struct file *file)
+{
+	file->private_data = inode->i_private;
+
+	return 0;
+}
+
+static const struct file_operations inject_action_fops = {
+	.write = thermal_debug_inject_action_write,
+	.open = thermal_debug_inject_action_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static void thermal_debug_register_device(struct thermal_dev *tdev)
 {
 	struct dentry *d;
@@ -131,6 +237,16 @@ static void thermal_debug_register_device(struct thermal_dev *tdev)
 	d = debugfs_create_dir(tdev->name, thermal_devices_dbg);
 	if (IS_ERR(d))
 		return;
+
+	/* Am I a cooling device ? */
+	if (tdev->dev_ops && tdev->dev_ops->cool_device) {
+		struct thermal_cooling_action *cact;
+
+		(void) debugfs_create_file("inject_action", S_IWUSR, d,
+					(void *)tdev, &inject_action_fops);
+		list_for_each_entry(cact, &tdev->cooling_actions, node)
+			thermal_add_action_debug(cact, d);
+	}
 
 	thermal_device_call(tdev, register_debug_entries, d);
 }
@@ -237,6 +353,115 @@ int thermal_request_temp(struct thermal_dev *tdev)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(thermal_request_temp);
+
+/**
+ * thermal_sensor_get_hotspot_temp() - Get the extrapolated hot spot temp.
+ *
+ * Return is the current hot spot temperature.
+ */
+int thermal_sensor_get_hotspot_temp(struct thermal_dev *tdev)
+{
+	struct thermal_domain *thermal_domain;
+	int ret = -ENODEV;
+
+	if (list_empty(&thermal_domain_list)) {
+		pr_debug("%s: No governors registered\n", __func__);
+		goto out;
+	}
+
+	list_for_each_entry(thermal_domain, &thermal_domain_list, node)
+		if (!strcmp(thermal_domain->domain_name, tdev->domain_name)) {
+
+			if (thermal_domain->governor &&
+			    thermal_domain->governor->dev_ops &&
+			    thermal_domain->governor->dev_ops->process_hotspot_temp) {
+				ret = thermal_domain->governor->dev_ops->process_hotspot_temp
+					(tdev);
+				goto out;
+			} else {
+				pr_debug("%s:Gov did not have right function\n",
+					__func__);
+				goto out;
+			}
+
+		}
+out:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(thermal_sensor_get_hotspot_temp);
+
+/**
+ * thermal_sensor_get_avg_temp() - Get the averaged on-die temp.
+ *
+ * Return is the current averaged on-die temperature.
+ */
+int thermal_sensor_get_avg_temp(struct thermal_dev *tdev)
+{
+	struct thermal_domain *thermal_domain;
+	int ret = -ENODEV;
+
+	if (list_empty(&thermal_domain_list)) {
+		pr_debug("%s: No governors registered\n", __func__);
+		goto out;
+	}
+
+	list_for_each_entry(thermal_domain, &thermal_domain_list, node)
+		if (!strcmp(thermal_domain->domain_name, tdev->domain_name)) {
+
+			if (thermal_domain->governor &&
+			    thermal_domain->governor->dev_ops &&
+			    thermal_domain->governor->dev_ops->process_hotspot_temp) {
+				ret = thermal_domain->governor->dev_ops->process_avg_temp
+					(tdev);
+				goto out;
+			} else {
+				pr_debug("%s:Gov did not have right function\n",
+					__func__);
+				goto out;
+			}
+
+		}
+out:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(thermal_sensor_get_avg_temp);
+
+ /**
+ * thermal_sensor_get_zone() - Get the zone.
+ *
+ * Return is the current zone.
+ */
+int thermal_sensor_get_zone(struct thermal_dev *tdev)
+{
+	struct thermal_domain *thermal_domain;
+	int ret = -ENODEV;
+
+	if (list_empty(&thermal_domain_list)) {
+		pr_debug("%s: No governors registered\n", __func__);
+		goto out;
+	}
+
+	list_for_each_entry(thermal_domain, &thermal_domain_list, node)
+		if (!strcmp(thermal_domain->domain_name, tdev->domain_name)) {
+
+			if (thermal_domain->governor &&
+			    thermal_domain->governor->dev_ops &&
+			    thermal_domain->governor->dev_ops->process_zone) {
+				ret = thermal_domain->governor->dev_ops->process_zone
+					(tdev);
+				goto out;
+			} else {
+				pr_debug("%s:Gov did not have right function\n",
+					__func__);
+				goto out;
+			}
+
+		}
+out:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(thermal_sensor_get_zone);
+
 
 /**
  * thermal_init_thermal_state() - Initialize the domain thermal state machine.
@@ -409,6 +634,7 @@ int thermal_cooling_dev_register(struct thermal_dev *tdev)
 	mutex_lock(&thermal_domain_list_lock);
 	list_add(&tdev->node, &domain->cooling_agents);
 	tdev->domain = domain;
+	INIT_LIST_HEAD(&tdev->cooling_actions);
 	thermal_debug_register_device(tdev);
 	mutex_unlock(&thermal_domain_list_lock);
 	thermal_init_thermal_state(tdev);
@@ -446,6 +672,8 @@ EXPORT_SYMBOL_GPL(thermal_cooling_dev_unregister);
 int thermal_sensor_dev_register(struct thermal_dev *tdev)
 {
 	struct thermal_domain *domain;
+	struct device *hwdev;
+	int device_index;
 
 	domain = thermal_domain_find(tdev->domain_name);
 	if (!domain)
@@ -461,6 +689,21 @@ int thermal_sensor_dev_register(struct thermal_dev *tdev)
 	mutex_unlock(&thermal_domain_list_lock);
 	thermal_init_thermal_state(tdev);
 	pr_debug("%s: added %s sensor\n", __func__, tdev->name);
+
+	device_index = atomic_read(&thermal_sensor_device_index);
+
+	/* Create sysfs entry for the thermal sensor device */
+	hwdev = device_create(thermal_framework_class, tdev->dev, device_index, NULL,
+			      THERMAL_FWK_DEV_FORMAT, device_index);
+
+	if (IS_ERR(hwdev)) {
+		pr_err("%s:Failed to create thermal sensor device %s\n", __func__,
+				tdev->name);
+		return -ENOMEM;
+	}
+	else {
+		atomic_inc(&thermal_sensor_device_index);
+	}
 
 	return 0;
 }
@@ -485,6 +728,14 @@ EXPORT_SYMBOL_GPL(thermal_sensor_dev_unregister);
 
 static int __init thermal_framework_init(void)
 {
+	/* Create a specific sysfs for thermal framework
+	   where temp sensors can register */
+	thermal_framework_class = class_create(THIS_MODULE, THERMAL_FWK_NAME);
+        if (IS_ERR(thermal_framework_class)) {
+                 pr_err("couldn't create sysfs class %s\n", THERMAL_FWK_NAME);
+                 return PTR_ERR(thermal_framework_class);
+        }
+
 	thermal_debug_init();
 	return 0;
 }
@@ -492,6 +743,10 @@ static int __init thermal_framework_init(void)
 static void __exit thermal_framework_exit(void)
 {
 	struct thermal_domain *domain, *tmp;
+
+	if (thermal_framework_class) {
+		class_destroy(thermal_framework_class);
+	}
 
 	mutex_lock(&thermal_domain_list_lock);
 	list_for_each_entry_safe(domain, tmp, &thermal_domain_list, node) {

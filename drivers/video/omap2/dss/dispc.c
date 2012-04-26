@@ -46,6 +46,7 @@
 
 #include "../clockdomain.h"
 #include "dss.h"
+#include "gammatable.h"
 #include "dss_features.h"
 #include "dispc.h"
 
@@ -1305,18 +1306,50 @@ void dispc_set_burst_size(enum omap_plane plane,
 	dispc_write_reg(DISPC_OVL_ATTRIBUTES(plane), val);
 }
 
-void dispc_enable_gamma_table(bool enable)
+void dispc_load_gamma_table(enum omap_channel channel, bool enable, u8 gamma)
 {
-	/*
-	 * This is partially implemented to support only disabling of
-	 * the gamma table.
-	 */
-	if (enable) {
-		DSSWARN("Gamma table enabling for TV not yet supported");
-		return;
-	}
+	u16 reg;
+	u32 temp;
+	u32 i;
+	const u8 *tablePtr;
 
-	REG_FLD_MOD(DISPC_CONFIG, enable, 9, 9);
+	if (channel == OMAP_DSS_CHANNEL_LCD)
+		reg = DISPC_GAMMA_TABLE0;
+	else if (channel == OMAP_DSS_CHANNEL_LCD2)
+		reg = DISPC_GAMMA_TABLE1;
+	else
+		return;
+
+	if (enable) {
+		tablePtr = gamma_table[gamma];
+		for (i = 0; i < GAMMA_TBL_SZ; i++) {
+			temp = tablePtr[i];
+			temp = (i << 24) | (temp << 16) | (temp << 8) | temp;
+			dispc_write_reg(reg, temp);
+		}
+	}
+}
+
+void dispc_load_gamma_tv_table(bool enable, u8 gamma)
+{
+	u32 temp;
+	u32 i;
+	const u16 *tablePtr;
+
+	if (enable) {
+		tablePtr = gamma_tv_table[gamma];
+		for (i = 0; i < GAMMA_TV_TBL_SZ; i++) {
+			temp = 0x0;
+			/* Reset internal index counter */
+			if (i == 0)
+				temp = 0x80000000;
+			temp |= ((*tablePtr & 0x3FF) << 20) |
+				((*tablePtr & 0x3FF) << 10) |
+				(*tablePtr & 0x3FF);
+			dispc_write_reg(DISPC_GAMMA_TABLE2, temp);
+			tablePtr++;
+		}
+	}
 }
 
 void dispc_set_zorder(enum omap_plane plane,
@@ -1574,8 +1607,9 @@ static void _dispc_set_scaling_common(enum omap_plane plane,
 	int accu0 = 0;
 	int accu1 = 0;
 	u32 l;
+	u16 y_adjust = color_mode == OMAP_DSS_COLOR_NV12 ? 2 : 0;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height,
+	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
 				out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_RGB_Y);
 	l = dispc_read_reg(DISPC_OVL_ATTRIBUTES(plane));
@@ -1627,6 +1661,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 {
 	int scale_x = out_width != orig_width;
 	int scale_y = out_height != orig_height;
+	u16 y_adjust = 0;
 
 	if (!dss_has_feature(FEAT_HANDLE_UV_SEPARATE))
 		return;
@@ -1679,7 +1714,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 	if (out_height != orig_height)
 		scale_y = true;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height,
+	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
 			out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_UV);
 
@@ -2259,6 +2294,18 @@ int dispc_scaling_decision(u16 width, u16 height,
 	max_factor = max(max_x_decim, max_y_decim);
 	x = min_x_decim;
 	y = min_y_decim;
+
+	/* For Lower Resolutions, during down scaling we hit higher CPU load  and L3 Bandwidth issues;
+		hence "decimate" in case of lower pixel clocks instead of down scaling.
+		   a. We do it only for HDMI and not for LCD downscaling : OMAP_DSS_CHANNEL_DIGIT
+		   b. We look for Functional Clock: 192 MHz and sink device pixel clock e.g: VGA size: 25175000 and make decision
+		   c. We do not decimate if the input width (1920) divided by output width (e.g: 640) is too high
+           Setting the "maxdownscale" parameter to 2 takes care of doing Decimation Process */
+
+        if( channel == OMAP_DSS_CHANNEL_DIGIT && ((fclk_max / dispc_pclk_rate(channel)) > 6) && (width / out_width) < 4) {
+                maxdownscale = 2;
+        }
+
 	while (1) {
 		if (x < min_x_decim || x > max_x_decim ||
 			y < min_y_decim || y > max_y_decim)
@@ -2837,11 +2884,20 @@ static void dispc_enable_lcd_out(enum omap_channel channel, bool enable)
 					msecs_to_jiffies(100)))
 			DSSERR("timeout waiting for FRAME DONE\n");
 
-		r = omap_dispc_unregister_isr(dispc_disable_isr,
+		r = omap_dispc_unregister_isr_sync(dispc_disable_isr,
 				&frame_done_completion, irq);
 
 		if (r)
 			DSSERR("failed to unregister FRAMEDONE isr\n");
+	}
+
+
+	if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_DIGIT)) {
+		if (!enable) {
+			disable_irq(dispc.irq);
+		} else {
+			enable_irq(dispc.irq);
+		}
 	}
 }
 
@@ -2860,6 +2916,9 @@ static void dispc_enable_digit_out(enum omap_display_type type, bool enable)
 
 	if (enable) {
 		unsigned long flags;
+		if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_LCD))
+			enable_irq(dispc.irq);
+
 		/* When we enable digit output, we'll get an extra digit
 		 * sync lost interrupt, that we need to ignore */
 		spin_lock_irqsave(&dispc.irq_lock, flags);
@@ -2896,7 +2955,7 @@ static void dispc_enable_digit_out(enum omap_display_type type, bool enable)
 			DSSERR("timeout waiting for EVSYNC\n");
 	}
 
-	r = omap_dispc_unregister_isr(dispc_disable_isr,
+	r = omap_dispc_unregister_isr_sync(dispc_disable_isr,
 			&frame_done_completion,
 			DISPC_IRQ_EVSYNC_EVEN | DISPC_IRQ_EVSYNC_ODD
 						| DISPC_IRQ_FRAMEDONETV);
@@ -3112,6 +3171,59 @@ bool dispc_trans_key_enabled(enum omap_channel ch)
 	return enabled;
 }
 
+/* valid inputs for gamma are from 1 to 10 that map
+  from 0.2 to 2.0 gamma values and 0 for disabled */
+int dispc_enable_gamma(enum omap_channel channel, u8 gamma)
+{
+#ifdef CONFIG_ARCH_OMAP4
+	bool enable;
+	static u8 loaded_gamma[MAX_DSS_MANAGERS];
+
+	if ((channel != OMAP_DSS_CHANNEL_DIGIT && gamma > NO_OF_GAMMA_TABLES) ||
+	(channel == OMAP_DSS_CHANNEL_DIGIT && gamma > NO_OF_GAMMA_TV_TABLES) ||
+	gamma < 0)
+		return -EINVAL;
+
+	enable = !!gamma;
+
+	switch (channel) {
+	case OMAP_DSS_CHANNEL_LCD:
+		DSSINFO("%s gamma correction for LCD\n", enable ? "Enable" :
+								"Disable");
+		if (gamma != loaded_gamma[OMAP_DSS_CHANNEL_LCD]) {
+			dispc_load_gamma_table(channel, enable, gamma - 1);
+			loaded_gamma[OMAP_DSS_CHANNEL_LCD] = gamma;
+		}
+		/* PALETTEGAMMATABLE */
+		REG_FLD_MOD(DISPC_CONFIG, enable ? 1 : 0, 3, 3);
+		break;
+	case OMAP_DSS_CHANNEL_LCD2:
+		DSSINFO("%s gamma correction for LCD2\n", enable ? "Enable" :
+								"Disable");
+		/* GAMATABLEENABLE */
+		REG_FLD_MOD(DISPC_CONFIG, enable ? 1 : 0, 9, 9);
+		if (gamma != loaded_gamma[OMAP_DSS_CHANNEL_LCD2]) {
+			dispc_load_gamma_table(channel, enable, gamma - 1);
+			loaded_gamma[OMAP_DSS_CHANNEL_LCD2] = gamma;
+		}
+		break;
+	case OMAP_DSS_CHANNEL_DIGIT:
+		DSSINFO("%s gamma correction for TV\n", enable ? "Enable" :
+								"Disable");
+		/* GAMATABLEENABLE */
+		REG_FLD_MOD(DISPC_CONFIG, enable ? 1 : 0, 9, 9);
+		if (gamma != loaded_gamma[OMAP_DSS_CHANNEL_DIGIT]) {
+			dispc_load_gamma_tv_table(enable, gamma - 1);
+			loaded_gamma[OMAP_DSS_CHANNEL_DIGIT] = gamma;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+#endif
+	return 0;
+}
+
 
 void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 {
@@ -3139,6 +3251,19 @@ void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 		REG_FLD_MOD(DISPC_CONTROL2, code, 9, 8);
 	else
 		REG_FLD_MOD(DISPC_CONTROL, code, 9, 8);
+}
+
+void dispc_set_dithering(enum omap_channel channel)
+{
+	int temp;
+
+	if (channel == OMAP_DSS_CHANNEL_LCD)
+	{
+		temp = 2;
+		REG_FLD_MOD(DISPC_CONTROL, temp, 31, 30);
+		temp = 1;
+		REG_FLD_MOD(DISPC_CONTROL, temp, 7, 7);
+	}
 }
 
 void dispc_set_parallel_interface_mode(enum omap_channel channel,
@@ -3850,7 +3975,8 @@ err:
 }
 EXPORT_SYMBOL(omap_dispc_register_isr);
 
-int omap_dispc_unregister_isr(omap_dispc_isr_t isr, void *arg, u32 mask)
+/* WARNING: callback might be executed even after this function returns! */
+int omap_dispc_unregister_isr_nosync(omap_dispc_isr_t isr, void *arg, u32 mask)
 {
 	int i;
 	unsigned long flags;
@@ -3882,7 +4008,40 @@ int omap_dispc_unregister_isr(omap_dispc_isr_t isr, void *arg, u32 mask)
 
 	return ret;
 }
-EXPORT_SYMBOL(omap_dispc_unregister_isr);
+EXPORT_SYMBOL(omap_dispc_unregister_isr_nosync);
+
+/*
+ * Ensure that callback <isr> will NOT be executed after this function
+ * returns. Must be called from sleepable context, though!
+ */
+int omap_dispc_unregister_isr_sync(omap_dispc_isr_t isr, void *arg, u32 mask)
+{
+	int ret;
+
+	ret = omap_dispc_unregister_isr_nosync(isr, arg, mask);
+
+	/* Non-atomic context is not really needed. But if we're called
+	 * from atomic context, it is probably from DISPC IRQ, where we
+	 * will deadlock.
+	 */
+	might_sleep();
+
+#if defined(CONFIG_SMP)
+	/* DISPC IRQ executes callbacks with dispc.irq_lock released, so
+	 * there is a chance that a callback be executed even though it
+	 * has been unregistered. Do disable/enable to act as a barrier, and
+	 * ensure that after returning from this function, the DISPC IRQ
+	 * will use an updated callback array, and NOT its cached copy.
+	 *
+	 * This is SMP-only issue because unregister_isr_nosync disables
+	 * IRQs.
+	 */
+	disable_irq(dispc.irq);
+	enable_irq(dispc.irq);
+#endif
+
+	return ret;
+}
 
 #ifdef DEBUG
 static void print_irq_status(u32 status)
@@ -4247,7 +4406,7 @@ int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout)
 
 	timeout = wait_for_completion_timeout(&completion, timeout);
 
-	omap_dispc_unregister_isr(dispc_irq_wait_handler, &completion, irqmask);
+	omap_dispc_unregister_isr_sync(dispc_irq_wait_handler, &completion, irqmask);
 
 	if (timeout == 0)
 		return -ETIMEDOUT;
@@ -4282,7 +4441,7 @@ int omap_dispc_wait_for_irq_interruptible_timeout(u32 irqmask,
 	timeout = wait_for_completion_interruptible_timeout(&completion,
 			timeout);
 
-	omap_dispc_unregister_isr(dispc_irq_wait_handler, &completion, irqmask);
+	omap_dispc_unregister_isr_sync(dispc_irq_wait_handler, &completion, irqmask);
 
 	if (timeout == 0)
 		r = -ETIMEDOUT;

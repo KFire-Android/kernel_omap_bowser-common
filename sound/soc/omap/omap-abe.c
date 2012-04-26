@@ -374,7 +374,11 @@ static void enable_be_port(struct snd_soc_pcm_runtime *be,
 				return;
 
 			/* MM_EXT connection to McBSP 2 ports */
+#ifdef CONFIG_ABE_44100
+			format.f = 44100;
+#else
 			format.f = 48000;
+#endif
 			format.samp_format = STEREO_RSHIFTED_16;
 			abe_connect_serial_port(MM_EXT_OUT_PORT, &format, MCBSP2_TX);
 			omap_abe_port_enable(abe_priv->abe,
@@ -387,7 +391,11 @@ static void enable_be_port(struct snd_soc_pcm_runtime *be,
 				return;
 
 			/* MM_EXT connection to McBSP 2 ports */
+#ifdef CONFIG_ABE_44100
+			format.f = 44100;
+#else
 			format.f = 48000;
+#endif
 			format.samp_format = STEREO_RSHIFTED_16;
 			abe_connect_serial_port(MM_EXT_IN_PORT, &format, MCBSP2_RX);
 			omap_abe_port_enable(abe_priv->abe,
@@ -942,12 +950,20 @@ static int omap_abe_dai_hw_params(struct snd_pcm_substream *substream,
 
 	dma_data = &omap_abe_dai_dma_params[dai->id][substream->stream];
 
+	/* Reset DMA info that may have been overridden */
+	dma_data->port_addr = 0L;
+	dma_data->set_threshold = NULL;
+	dma_data->data_type = OMAP_DMA_DATA_TYPE_S32;
+	dma_data->packet_size = 0;
+
 	switch (params_channels(params)) {
 	case 1:
-		if (params_format(params) == SNDRV_PCM_FORMAT_S16_LE)
-			format.samp_format = MONO_16_16;
-		else
+		if (params_format(params) == SNDRV_PCM_FORMAT_S16_LE) {
+			format.samp_format = MONO_RSHIFTED_16;
+			dma_data->data_type = OMAP_DMA_DATA_TYPE_S16;
+		} else {
 			format.samp_format = MONO_MSB;
+		}
 		break;
 	case 2:
 		if (params_format(params) == SNDRV_PCM_FORMAT_S16_LE)
@@ -1345,9 +1361,13 @@ static struct snd_soc_dai_driver omap_abe_dai[] = {
 		.capture = {
 			.stream_name = "MultiMedia1 Capture",
 			.channels_min = 2,
-			.channels_max = 6,
+			.channels_max = 8,
+#ifdef CONFIG_ABE_44100
+			.rates = SNDRV_PCM_RATE_44100,
+#else
 			.rates = SNDRV_PCM_RATE_48000,
-			.formats = SNDRV_PCM_FMTBIT_S32_LE,
+#endif
+			.formats = OMAP_ABE_FORMATS,
 		},
 		.ops = &omap_abe_dai_ops,
 	},
@@ -1359,7 +1379,11 @@ static struct snd_soc_dai_driver omap_abe_dai[] = {
 			.stream_name = "MultiMedia2 Capture",
 			.channels_min = 1,
 			.channels_max = 2,
+#ifdef CONFIG_ABE_44100
+			.rates = SNDRV_PCM_RATE_44100,
+#else
 			.rates = SNDRV_PCM_RATE_48000,
+#endif
 			.formats = OMAP_ABE_FORMATS,
 		},
 		.ops = &omap_abe_dai_ops,
@@ -1372,16 +1396,14 @@ static struct snd_soc_dai_driver omap_abe_dai[] = {
 			.stream_name = "Voice Playback",
 			.channels_min = 1,
 			.channels_max = 2,
-			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-				 SNDRV_PCM_RATE_48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 			.formats = OMAP_ABE_FORMATS,
 		},
 		.capture = {
 			.stream_name = "Voice Capture",
 			.channels_min = 1,
 			.channels_max = 2,
-			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-				 SNDRV_PCM_RATE_48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 			.formats = OMAP_ABE_FORMATS,
 		},
 		.ops = &omap_abe_dai_ops,

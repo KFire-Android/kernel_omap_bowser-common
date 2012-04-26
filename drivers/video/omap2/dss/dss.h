@@ -237,7 +237,7 @@ void default_get_overlay_fifo_thresholds(enum omap_plane plane,
 int dss_init_overlay_managers(struct platform_device *pdev);
 void dss_uninit_overlay_managers(struct platform_device *pdev);
 int dss_mgr_wait_for_go_ovl(struct omap_overlay *ovl);
-void dss_setup_partial_planes(struct omap_dss_device *dssdev,
+int dss_setup_partial_planes(struct omap_dss_device *dssdev,
 				u16 *x, u16 *y, u16 *w, u16 *h,
 				bool enlarge_update_area);
 void dss_start_update(struct omap_dss_device *dssdev);
@@ -464,7 +464,8 @@ void dispc_set_channel_out(enum omap_plane plane,
 		enum omap_channel channel_out);
 void dispc_set_wb_channel_out(enum omap_plane plane);
 
-void dispc_enable_gamma_table(bool enable);
+void dispc_load_gamma_table(enum omap_channel channel, bool enable, u8 gamma);
+void dispc_load_gamma_tv_table(bool enable, u8 gamma);
 int dispc_setup_plane(enum omap_plane plane,
 		      u32 paddr, u16 screen_width,
 		      u16 pos_x, u16 pos_y,
@@ -477,7 +478,7 @@ int dispc_setup_plane(enum omap_plane plane,
 		      u8 rotation, bool mirror,
 		      u8 global_alpha, u8 pre_mult_alpha,
 		      enum omap_channel channel,
-		      u32 puv_addr);
+		      u32 puv_addr, bool source_of_wb);
 int dispc_scaling_decision(u16 width, u16 height,
 		u16 out_width, u16 out_height,
 		enum omap_plane plane,
@@ -499,6 +500,7 @@ void dispc_enable_replication(enum omap_plane plane, bool enable);
 void dispc_set_parallel_interface_mode(enum omap_channel channel,
 		enum omap_parallel_interface_mode mode);
 void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines);
+void dispc_set_dithering(enum omap_channel channel);
 void dispc_set_lcd_display_type(enum omap_channel channel,
 		enum omap_lcd_display_type type);
 void dispc_set_loadmode(enum omap_dss_load_mode mode);
@@ -513,6 +515,7 @@ void dispc_get_trans_key(enum omap_channel ch,
 		u32 *trans_key);
 void dispc_enable_trans_key(enum omap_channel ch, bool enable);
 void dispc_enable_alpha_blending(enum omap_channel ch, bool enable);
+int  dispc_enable_gamma(enum omap_channel ch, u8 gamma_value);
 bool dispc_trans_key_enabled(enum omap_channel ch);
 bool dispc_alpha_blending_enabled(enum omap_channel ch);
 
@@ -534,6 +537,7 @@ int dispc_get_clock_div(enum omap_channel channel,
 		struct dispc_clock_info *cinfo);
 u32 sa_calc_wrap(struct dispc_config *dispc_reg_config, u32 channel_no);
 int dispc_setup_wb(struct writeback_cache_data *wb);
+void dispc_setup_wb_source(enum omap_writeback_source source);
 void dispc_go_wb(void);
 
 /* VENC */
@@ -592,6 +596,7 @@ int omapdss_hdmi_get_s3d_enable(void);
 int hdmi_get_current_hpd(void);
 void hdmi_get_monspecs(struct fb_monspecs *specs);
 u8 *hdmi_read_edid(struct omap_video_timings *);
+void hdmi_set_edid_state(bool val);
 
 int hdmi_panel_init(void);
 void hdmi_panel_exit(void);
@@ -599,6 +604,10 @@ void hdmi_dump_regs(struct seq_file *s);
 int omapdss_hdmi_register_hdcp_callbacks(void (*hdmi_start_frame_cb)(void),
 					 void (*hdmi_irq_cb)(int status),
 					 bool (*hdmi_power_on_cb)(void));
+#ifdef CONFIG_HDMI_CERT_DEBUG
+extern struct device_attribute dev_attr_hdmi_timings;
+#endif
+
 int omap_dss_ovl_set_info(struct omap_overlay *ovl,
 		struct omap_overlay_info *info);
 

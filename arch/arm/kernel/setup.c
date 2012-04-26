@@ -98,6 +98,34 @@ unsigned int elf_hwcap __read_mostly;
 EXPORT_SYMBOL(elf_hwcap);
 
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER
+
+unsigned char system_rev16[REVISION16_SIZE+1];
+EXPORT_SYMBOL(system_rev16);
+
+unsigned char system_serial16[SERIAL16_SIZE+1];
+EXPORT_SYMBOL(system_serial16);
+
+unsigned char system_bootmode[BOOTMODE_SIZE+1];
+EXPORT_SYMBOL(system_bootmode);
+
+unsigned char system_postmode[BOOTMODE_SIZE+1];
+EXPORT_SYMBOL(system_postmode);
+
+unsigned char system_mac_addr[MAC_ADDR_SIZE+1];
+EXPORT_SYMBOL(system_mac_addr);
+
+unsigned char system_mac_sec[MAC_SEC_SIZE+1];
+EXPORT_SYMBOL(system_mac_sec);
+
+unsigned char system_bt_mac_addr[MAC_ADDR_SIZE+1];
+EXPORT_SYMBOL(system_bt_mac_addr);
+
+unsigned char system_productid[PRODUCTID_SIZE+1];
+EXPORT_SYMBOL(system_productid);
+
+#endif //CONFIG_MACH_OMAP4_BOWSER
+
 #ifdef MULTI_CPU
 struct processor processor __read_mostly;
 #endif

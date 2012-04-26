@@ -479,10 +479,13 @@ static int tt_no_collision (
 
 /*-------------------------------------------------------------------------*/
 
+#define PSS_WAIT_PERIOD	(8 * 1100)
+
 static int enable_periodic (struct ehci_hcd *ehci)
 {
 	u32	cmd;
 	int	status;
+	u32	counter;
 
 	if (ehci->periodic_sched++)
 		return 0;
@@ -490,16 +493,28 @@ static int enable_periodic (struct ehci_hcd *ehci)
 	/* did clearing PSE did take effect yet?
 	 * takes effect only at frame boundaries...
 	 */
-	status = handshake_on_error_set_halt(ehci, &ehci->regs->status,
-					     STS_PSS, 0, 9 * 125);
+	/*
+	 * Rapid suspend-resume could potentially take longer to unblock.
+	 * so for now, wait up to 2.2 seconds
+	 * Root cause is not known
+	 */
+	counter = 1;
+again:
+	status = handshake(ehci, &ehci->regs->status,
+			     STS_PSS, 0, 125);
 	if (status) {
-		usb_hc_died(ehci_to_hcd(ehci));
-		return status;
+		if (counter++ <= PSS_WAIT_PERIOD)
+			goto again;
 	}
+	if (counter > PSS_WAIT_PERIOD)
+		printk("%s: EHCI PSS==0 sync count=%d microframes\n",__func__, counter);
 
 	cmd = ehci_readl(ehci, &ehci->regs->command) | CMD_PSE;
 	ehci_writel(ehci, cmd, &ehci->regs->command);
 	/* posted write ... PSS happens later */
+	/* Don't post this write - let's make sure it takes effect now */
+	ehci_readl(ehci, &ehci->regs->command);
+	mdelay(2);
 	ehci_to_hcd(ehci)->state = HC_STATE_RUNNING;
 
 	/* make sure ehci_work scans these */
@@ -514,6 +529,7 @@ static int disable_periodic (struct ehci_hcd *ehci)
 {
 	u32	cmd;
 	int	status;
+	u32	counter;
 
 	if (--ehci->periodic_sched)
 		return 0;
@@ -531,17 +547,29 @@ static int disable_periodic (struct ehci_hcd *ehci)
 	/* did setting PSE not take effect yet?
 	 * takes effect only at frame boundaries...
 	 */
-	status = handshake_on_error_set_halt(ehci, &ehci->regs->status,
-					     STS_PSS, STS_PSS, 9 * 125);
+	/*
+	 * Rapid suspend-resume could potentially take longer to unblock.
+	 * so for now, wait up to 2.2 seconds
+	 * Root cause is not known
+	 */
+	counter = 1;
+again:
+	status = handshake(ehci, &ehci->regs->status,
+			     STS_PSS, STS_PSS, 125);
 	if (status) {
-		usb_hc_died(ehci_to_hcd(ehci));
-		return status;
+		if (counter++ <= PSS_WAIT_PERIOD)
+			goto again;
 	}
+
+	if (counter > PSS_WAIT_PERIOD)
+		printk("%s: EHCI PSS==1 sync count=%d microframes\n",__func__, counter);
 
 	cmd = ehci_readl(ehci, &ehci->regs->command) & ~CMD_PSE;
 	ehci_writel(ehci, cmd, &ehci->regs->command);
 	/* posted write ... */
-
+	/* Don't post this write - let's make sure it takes effect now */
+	ehci_readl(ehci, &ehci->regs->command);
+	mdelay(2);
 	free_cached_lists(ehci);
 
 	ehci->next_uframe = -1;

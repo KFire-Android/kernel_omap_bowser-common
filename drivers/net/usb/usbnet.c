@@ -84,6 +84,8 @@
 // randomly generated ethernet address
 static u8	node_id [ETH_ALEN];
 
+
+struct usbnet			*usbnet_dev;
 static const char driver_name [] = "usbnet";
 
 /* use ethtool to change the level for any given device */
@@ -1270,6 +1272,8 @@ void usbnet_disconnect (struct usb_interface *intf)
 	usb_kill_urb(dev->interrupt);
 	usb_free_urb(dev->interrupt);
 
+	usbnet_dev = NULL;
+
 	free_netdev(net);
 	usb_put_dev (xdev);
 }
@@ -1443,7 +1447,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 
 	// ok, it's ready to go.
 	usb_set_intfdata (udev, dev);
-
+	usbnet_dev = dev;
 	netif_device_attach (net);
 
 	if (dev->driver_info->flags & FLAG_LINK_INTR)
@@ -1471,12 +1475,13 @@ EXPORT_SYMBOL_GPL(usbnet_probe);
 
 int usbnet_suspend (struct usb_interface *intf, pm_message_t message)
 {
-	struct usbnet		*dev = usb_get_intfdata(intf);
+	struct usbnet		*dev = usbnet_dev;
 
 	if (!dev->suspend_count++) {
 		spin_lock_irq(&dev->txq.lock);
 		/* don't autosuspend while transmitting */
 		if (dev->txq.qlen && (message.event & PM_EVENT_AUTO)) {
+			dev->suspend_count--;
 			spin_unlock_irq(&dev->txq.lock);
 			return -EBUSY;
 		} else {
@@ -1503,10 +1508,15 @@ EXPORT_SYMBOL_GPL(usbnet_suspend);
 
 int usbnet_resume (struct usb_interface *intf)
 {
-	struct usbnet		*dev = usb_get_intfdata(intf);
+	struct usbnet		*dev = usbnet_dev;
 	struct sk_buff          *skb;
 	struct urb              *res;
 	int                     retval;
+
+	if (dev->suspend_count != 1){
+		dev->suspend_count = 0;
+		return 0;
+	}
 
 	if (!--dev->suspend_count) {
 		/* resume interrupt URBs */

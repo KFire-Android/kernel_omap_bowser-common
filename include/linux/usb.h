@@ -492,6 +492,7 @@ struct usb_device {
 #endif
 	struct wusb_dev *wusb_dev;
 	int slot_id;
+	atomic_t resuming;
 };
 #define	to_usb_device(d) container_of(d, struct usb_device, dev)
 

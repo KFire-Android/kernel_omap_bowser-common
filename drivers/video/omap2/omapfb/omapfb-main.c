@@ -29,6 +29,8 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/omapfb.h>
+#include <linux/cpufreq.h>
+#include <linux/gpio.h>
 
 #include <video/omapdss.h>
 #include <plat/vram.h>
@@ -1293,22 +1295,38 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 {
 	struct omapfb_info *ofbi = FB2OFB(fbi);
 	struct omapfb2_device *fbdev = ofbi->fbdev;
-	struct omap_dss_device *display = fb2display(fbi);
+	struct omap_dss_device *display = NULL;
+	unsigned num_displays = fbdev->num_displays;
 	int r = 0;
+	enum panel_status {OFF, ON};
 
-	if (!display)
+	if (num_displays == 0)
 		return -EINVAL;
 
 	omapfb_lock(fbdev);
 
 	switch (blank) {
 	case FB_BLANK_UNBLANK:
-		if (display->state == OMAP_DSS_DISPLAY_SUSPENDED) {
-			if (display->driver->resume)
-				r = display->driver->resume(display);
-		} else if (display->state == OMAP_DSS_DISPLAY_DISABLED) {
-			if (display->driver->enable)
-				r = display->driver->enable(display);
+		/*
+		 * hint cpufreq governor
+		 */
+		send_panel_hint(ON);
+
+		while (num_displays) {
+			display = fbdev->displays[--num_displays];
+			if(!display)
+				continue;
+
+			if (display->channel == OMAP_DSS_CHANNEL_DIGIT)
+				continue;
+
+			if (display->state == OMAP_DSS_DISPLAY_SUSPENDED) {
+				if (display->driver->resume)
+					r = display->driver->resume(display);
+			} else if (display->state == OMAP_DSS_DISPLAY_DISABLED) {
+				if (display->driver->enable)
+					r = display->driver->enable(display);
+			}
 		}
 
 		break;
@@ -1319,13 +1337,28 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
 	case FB_BLANK_POWERDOWN:
-		if (display->state != OMAP_DSS_DISPLAY_ACTIVE)
-			goto exit;
 
-		if (display->driver->suspend)
-			r = display->driver->suspend(display);
-		else if (display->driver->disable)
-			display->driver->disable(display);
+		while (num_displays) {
+			display = fbdev->displays[--num_displays];
+			if(!display)
+				continue;
+
+			if (display->channel == OMAP_DSS_CHANNEL_DIGIT)
+				continue;
+
+			if (display->state != OMAP_DSS_DISPLAY_ACTIVE)
+				continue;
+
+			if (display->driver->suspend)
+				r = display->driver->suspend(display);
+			else if (display->driver->disable)
+				display->driver->disable(display);
+		}
+
+		/*
+		 * hint cpufreq governor
+		 */
+		send_panel_hint(OFF);
 
 		break;
 

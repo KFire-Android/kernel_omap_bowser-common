@@ -58,6 +58,17 @@ config BT_HCIUART_BCSP
 
 	  Say Y here to compile support for HCI BCSP protocol.
 
+config BT_HCIUART_H5
+	bool "H5 protocol support"
+	depends on BT_HCIUART
+	select BITREVERSE
+	help
+	  H5, also called 3 Wire or SLIP, is serial protocol for communication
+	  between Bluetooth device and host. This protocol can be used when
+	  no CTS/RTS, hardware flow control lines, are available.
+
+	  Say Y here to compile support for HCI H5 protocol.
+
 config BT_HCIUART_ATH3K
 	bool "Atheros AR300x serial support"
 	depends on BT_HCIUART

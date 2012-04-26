@@ -37,14 +37,29 @@
 static inline u16 LM75_TEMP_TO_REG(long temp)
 {
 	int ntemp = SENSORS_LIMIT(temp, LM75_TEMP_MIN, LM75_TEMP_MAX);
+
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+	ntemp += (ntemp<0 ? -500 : 500);
+	return (u16)(ntemp / 1000);
+#else
 	ntemp += (ntemp<0 ? -250 : 250);
 	return (u16)((ntemp / 500) << 7);
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 }
 
 static inline int LM75_TEMP_FROM_REG(u16 reg)
 {
 	/* use integer division instead of equivalent right shift to
 	   guarantee arithmetic shift and preserve the sign */
+
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+	return ((s16)reg) * 1000;
+#else
 	return ((s16)reg / 128) * 500;
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 }
 

@@ -48,6 +48,8 @@
 #define DISPC_IRQ_FRAMEDONE2		(1 << 22)
 #define DISPC_IRQ_FRAMEDONE_WB		(1 << 23)
 #define DISPC_IRQ_FRAMEDONETV		(1 << 24)
+#define HDMI_EDID_SAD_MAX_LENGTH	10
+#define HDMI_EDID_AUDIO_LPCM		1
 #define DISPC_IRQ_WBINCOMPLETE		(1 << 26)
 
 struct omap_dss_device;
@@ -233,6 +235,18 @@ struct rfbi_timings {
 	int converted;
 };
 
+struct hdmi_audio_descriptor {
+	unsigned int num_of_ch;
+	unsigned int format;
+	unsigned int rates;
+	u64 bit_depth;
+};
+
+struct hdmi_audio_edid {
+	int length;
+	struct hdmi_audio_descriptor sad[HDMI_EDID_SAD_MAX_LENGTH];
+};
+
 void omap_rfbi_write_command(const void *buf, u32 len);
 void omap_rfbi_read_data(void *buf, u32 len);
 void omap_rfbi_write_data(const void *buf, u32 len);
@@ -266,6 +280,8 @@ int dsi_vc_dcs_read_2(struct omap_dss_device *dssdev, int channel, u8 dcs_cmd,
 		u8 *data1, u8 *data2);
 int dsi_vc_gen_write_nosync(struct omap_dss_device *dssdev, int channel,
 		u8 *data, int len);
+int dsi_vc_gen_write_nosync_sclk(struct omap_dss_device *dssdev, int channel,
+		u8 *data, int len);
 int dsi_vc_gen_write(struct omap_dss_device *dssdev, int channel,
 		u8 *data, int len);
 int dsi_vc_set_max_rx_packet_size(struct omap_dss_device *dssdev, int channel,
@@ -288,6 +304,7 @@ struct omap_dss_board_info {
 	struct omap_dss_device **devices;
 	struct omap_dss_device *default_device;
 	void (*dsi_mux_pads)(bool enable);
+	int (*set_min_bus_tput)(struct device *dev, unsigned long r);
 };
 
 #if defined(CONFIG_OMAP2_DSS_MODULE) || defined(CONFIG_OMAP2_DSS)
@@ -440,6 +457,7 @@ struct omap_overlay_manager_info {
 
 	bool cpr_enable;
 	struct omap_dss_cpr_coefs cpr_coefs;
+	u8 gamma;
 };
 
 struct omap_overlay_manager {
@@ -754,13 +772,16 @@ int omap_dss_get_num_overlays(void);
 struct omap_overlay *omap_dss_get_overlay(int num);
 struct omap_writeback *omap_dss_get_wb(int num);
 
+bool omap_dss_overlay_ensure_bw(void);
+
 void omapdss_default_get_resolution(struct omap_dss_device *dssdev,
 		u16 *xres, u16 *yres);
 int omapdss_default_get_recommended_bpp(struct omap_dss_device *dssdev);
 
 typedef void (*omap_dispc_isr_t) (void *arg, u32 mask);
 int omap_dispc_register_isr(omap_dispc_isr_t isr, void *arg, u32 mask);
-int omap_dispc_unregister_isr(omap_dispc_isr_t isr, void *arg, u32 mask);
+int omap_dispc_unregister_isr_sync(omap_dispc_isr_t isr, void *arg, u32 mask);
+int omap_dispc_unregister_isr_nosync(omap_dispc_isr_t isr, void *arg, u32 mask);
 
 int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout);
 int omap_dispc_wait_for_irq_interruptible_timeout(u32 irqmask,
@@ -826,5 +847,8 @@ static inline void dss_ovl_cb(struct omapdss_ovl_cb *cb, int id, int status)
 	if (!cb->mask)
 		cb->fn = NULL;
 }
+void omapdss_hdmi_get_audio_descriptors(struct hdmi_audio_edid *audio_db);
 
+int dss_set_min_bus_tput(unsigned long tput);
+int dss_set_dispc_clk(unsigned long freq);
 #endif

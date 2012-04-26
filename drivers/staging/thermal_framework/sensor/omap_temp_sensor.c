@@ -509,6 +509,28 @@ out:
 	return count;
 }
 
+static ssize_t show_hotspot_temp(struct device *dev,
+			struct device_attribute *devattr,
+			char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct omap_temp_sensor *temp_sensor = platform_get_drvdata(pdev);
+
+	return sprintf(buf, "%d\n",
+		thermal_sensor_get_hotspot_temp(temp_sensor->therm_fw));
+}
+
+static ssize_t show_avg_temp(struct device *dev,
+			struct device_attribute *devattr,
+			char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct omap_temp_sensor *temp_sensor = platform_get_drvdata(pdev);
+
+	return sprintf(buf, "avg temp%d\n",
+		thermal_sensor_get_avg_temp(temp_sensor->therm_fw));
+}
+
 static int omap_temp_sensor_read_temp(struct device *dev,
 				      struct device_attribute *devattr,
 				      char *buf)
@@ -732,6 +754,10 @@ static DEVICE_ATTR(temp_thresh, S_IWUSR | S_IRUGO, show_temp_thresholds,
 			  set_temp_thresholds);
 static DEVICE_ATTR(update_rate, S_IWUSR | S_IRUGO, show_update_rate,
 			  set_update_rate);
+static DEVICE_ATTR(hotspot_temp, S_IRUGO, show_hotspot_temp,
+			  NULL);
+static DEVICE_ATTR(avg_temp1_input, S_IRUGO, show_avg_temp,
+			  NULL);
 
 static struct attribute *omap_temp_sensor_attributes[] = {
 	&dev_attr_temp1_input.attr,
@@ -745,6 +771,8 @@ static struct attribute *omap_temp_sensor_attributes[] = {
 	&dev_attr_debug_user.attr,
 #endif
 	&dev_attr_update_rate.attr,
+	&dev_attr_hotspot_temp.attr,
+	&dev_attr_avg_temp1_input.attr,
 	NULL
 };
 
@@ -845,7 +873,7 @@ static irqreturn_t omap_tshut_irq_handler(int irq, void *data)
 	if (temp_sensor->is_efuse_valid) {
 		pr_emerg("%s: Thermal shutdown reached rebooting device\n",
 			__func__);
-		kernel_restart(NULL);
+		orderly_poweroff(true);
 	} else {
 		pr_err("%s:Invalid EFUSE, Non-trimmed BGAP\n", __func__);
 	}
@@ -857,6 +885,9 @@ static irqreturn_t omap_talert_irq_handler(int irq, void *data)
 {
 	struct omap_temp_sensor *temp_sensor = (struct omap_temp_sensor *)data;
 	int t_hot, t_cold, temp_offset, temp;
+	char env_temp[20];
+	char env_zone[20];
+        char *envp[] = { env_temp, env_zone, NULL };
 
 	t_hot = omap_temp_sensor_readl(temp_sensor, BGAP_STATUS_OFFSET)
 	    & OMAP4_HOT_FLAG_MASK;

@@ -2654,6 +2654,9 @@ static struct omap_hwmod omap44xx_gpio2_hwmod = {
 	.mpu_irqs	= omap44xx_gpio2_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_gpio2_irqs),
 	.main_clk	= "gpio2_ick",
+#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+	.flags		= HWMOD_INIT_NO_RESET,
+#endif
 	.prcm = {
 		.omap4 = {
 			.clkctrl_reg = OMAP4430_CM_L4PER_GPIO2_CLKCTRL,
@@ -5443,6 +5446,9 @@ static struct omap_hwmod omap44xx_timer10_hwmod = {
 	.mpu_irqs	= omap44xx_timer10_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_timer10_irqs),
 	.main_clk	= "timer10_fck",
+#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+	.flags		= HWMOD_INIT_NO_RESET,
+#endif
 	.prcm = {
 		.omap4 = {
 			.clkctrl_reg = OMAP4430_CM_L4PER_DMTIMER10_CLKCTRL,

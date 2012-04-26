@@ -29,10 +29,10 @@
 
 
 struct touch_settings {
-	const uint8_t   *data;
+	uint8_t   *data;
 	uint8_t         size;
 	uint8_t         tag;
-} __packed;
+} __attribute__ ((packed));
 
 struct touch_firmware {
 	const uint8_t   *img;
@@ -45,7 +45,7 @@ struct touch_framework {
 	const uint16_t  *abs;
 	uint8_t         size;
 	uint8_t         enable_vkeys;
-} __packed;
+} __attribute__ ((packed));
 
 struct touch_platform_data {
 	struct touch_settings   *sett[256];
@@ -58,6 +58,6 @@ struct touch_platform_data {
 	int         (*hw_reset)(void);
 	int         (*hw_recov)(int);
 	int         (*irq_stat)(void);
-} __packed;
+} __attribute__ ((packed));
 
 #endif /* _LINUX_TOUCH_PLATFORM_H */

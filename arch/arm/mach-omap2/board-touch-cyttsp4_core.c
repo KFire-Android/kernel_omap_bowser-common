@@ -29,7 +29,7 @@
 
 /* duplicate the defines here, should move to a header file */
 #define GPIO_TOUCH_RESET 23
-#define GPIO_TOUCH_IRQ   35
+#define GPIO_TOUCH_IRQ   24
 
 
 #define TOUCH_GPIO_RST_CYTTSP GPIO_TOUCH_RESET
@@ -38,7 +38,6 @@
 static int cyttsp4_hw_reset(void)
 {
 	int ret = 0;
-	return 0;
 
 	gpio_set_value(TOUCH_GPIO_RST_CYTTSP, 1);
 	pr_info("%s: gpio_set_value(step%d)=%d\n", __func__, 1, 1);
@@ -62,8 +61,9 @@ static int cyttsp4_hw_recov(int on)
 		cyttsp4_hw_reset();
 		retval = 0;
 	} else
-		retval = -EINVAL;
-	return 0;
+		retval = -ENOSYS;
+
+	return retval;
 }
 
 static int cyttsp4_irq_stat(void)
@@ -75,12 +75,12 @@ static int cyttsp4_irq_stat(void)
 #define CY_ABS_MIN_Y 0
 #define CY_ABS_MIN_P 0
 #define CY_ABS_MIN_W 0
-#define CY_ABS_MIN_T 0 /* //1 */
+#define CY_ABS_MIN_T 1
 #define CY_ABS_MAX_X CY_MAXX
 #define CY_ABS_MAX_Y CY_MAXY
 #define CY_ABS_MAX_P 255
 #define CY_ABS_MAX_W 255
-#define CY_ABS_MAX_T 9 /* //10 */
+#define CY_ABS_MAX_T 10
 #define CY_IGNORE_VALUE 0xFFFF
 
 
@@ -148,6 +148,7 @@ static const uint16_t cyttsp4_abs[] = {
 	ABS_MT_POSITION_X, CY_ABS_MIN_X, CY_ABS_MAX_X, 0, 0,
 	ABS_MT_POSITION_Y, CY_ABS_MIN_Y, CY_ABS_MAX_Y, 0, 0,
 	ABS_MT_PRESSURE, CY_ABS_MIN_P, CY_ABS_MAX_P, 0, 0,
+//	CY_IGNORE_VALUE/*ABS_MT_TOUCH_MAJOR*/, CY_ABS_MIN_W, CY_ABS_MAX_W, 0, 0,
 	ABS_MT_TOUCH_MAJOR, CY_ABS_MIN_W, CY_ABS_MAX_W, 0, 0,
 	ABS_MT_TRACKING_ID, CY_ABS_MIN_T, CY_ABS_MAX_T, 0, 0,
 };

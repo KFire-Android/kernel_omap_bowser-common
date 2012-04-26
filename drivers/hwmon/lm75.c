@@ -46,6 +46,11 @@ enum lm75_type {		/* keep sorted in alphabetical order */
 	tcn75,
 	tmp100,
 	tmp101,
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+   tmp103,
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 	tmp105,
 	tmp175,
 	tmp275,
@@ -53,8 +58,13 @@ enum lm75_type {		/* keep sorted in alphabetical order */
 };
 
 /* Addresses scanned */
-static const unsigned short normal_i2c[] = { 0x48, 0x49, 0x4a, 0x4b, 0x4c,
-					0x4d, 0x4e, 0x4f, I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = { 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+               0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
+               I2C_CLIENT_END };
 
 
 /* The LM75 registers */
@@ -161,9 +171,17 @@ lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	/* Set to LM75 resolution (9 bits, 1/2 degree C) and range.
 	 * Then tweak to be more precise when appropriate.
 	 */
+
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+	set_mask = 0;
+	clr_mask = (0 << 1);       /* continuous conversions, M1=1, so no need to clear */
+#else
 	set_mask = 0;
 	clr_mask = (1 << 0)			/* continuous conversions */
 		| (1 << 6) | (1 << 5);		/* 9-bit mode */
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 
 	/* configure as specified */
 	status = lm75_read_value(client, LM75_REG_CONF);
@@ -224,6 +242,11 @@ static const struct i2c_device_id lm75_ids[] = {
 	{ "tcn75", tcn75, },
 	{ "tmp100", tmp100, },
 	{ "tmp101", tmp101, },
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+	{ "tmp103", tmp103, },
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 	{ "tmp105", tmp105, },
 	{ "tmp175", tmp175, },
 	{ "tmp275", tmp275, },
@@ -377,20 +400,31 @@ static struct i2c_driver lm75_driver = {
 static int lm75_read_value(struct i2c_client *client, u8 reg)
 {
 	int value;
-
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+	return i2c_smbus_read_byte_data(client, reg);
+#else
 	if (reg == LM75_REG_CONF)
 		return i2c_smbus_read_byte_data(client, reg);
 
 	value = i2c_smbus_read_word_data(client, reg);
 	return (value < 0) ? value : swab16(value);
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 }
 
 static int lm75_write_value(struct i2c_client *client, u8 reg, u16 value)
 {
+/* 20111228, Robert Hu, for support TMP103 { */
+#ifdef CONFIG_TEMPSENSOR_TMP103
+	i2c_smbus_write_byte_data(client, reg, value);
+#else
 	if (reg == LM75_REG_CONF)
 		return i2c_smbus_write_byte_data(client, reg, value);
 	else
 		return i2c_smbus_write_word_data(client, reg, swab16(value));
+#endif
+/* 20111228, Robert Hu, for support TMP103 } */
 }
 
 static struct lm75_data *lm75_update_device(struct device *dev)

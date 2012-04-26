@@ -30,7 +30,7 @@ void hid_dump_input(struct hid_device *, struct hid_usage *, __s32);
 void hid_dump_device(struct hid_device *, struct seq_file *);
 void hid_dump_field(struct hid_field *, int, struct seq_file *);
 char *hid_resolv_usage(unsigned, struct seq_file *);
-void hid_debug_register(struct hid_device *, const char *);
+int hid_debug_register(struct hid_device *, const char *);  /* -1 failure, 0 sucess*/
 void hid_debug_unregister(struct hid_device *);
 void hid_debug_init(void);
 void hid_debug_exit(void);

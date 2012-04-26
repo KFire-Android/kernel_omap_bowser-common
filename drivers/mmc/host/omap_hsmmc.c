@@ -2589,6 +2589,15 @@ static int omap_hsmmc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int omap_hsmmc_shutdown(struct platform_device *pdev)
+{
+	struct omap_hsmmc_host *host = platform_get_drvdata(pdev);
+
+	/* Disable mmc interrupts on shutdown of driver */
+	if (host)
+		free_irq(host->irq, host);
+}
+
 #ifdef CONFIG_PM
 static int omap_hsmmc_suspend(struct device *dev)
 {
@@ -2719,6 +2728,7 @@ static struct dev_pm_ops omap_hsmmc_dev_pm_ops = {
 
 static struct platform_driver omap_hsmmc_driver = {
 	.remove		= omap_hsmmc_remove,
+	.shutdown	= omap_hsmmc_shutdown,
 	.driver		= {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,

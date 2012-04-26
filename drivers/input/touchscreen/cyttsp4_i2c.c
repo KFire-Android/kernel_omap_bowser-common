@@ -3,10 +3,10 @@
  * Cypress TrueTouch(TM) Standard Product (TTSP) I2C touchscreen driver.
  * For use with Cypress Gen4 and Solo parts.
  * Supported parts include:
- * CY8CTMA398
- * CY8CTMA884
+ * CY8CTMA884/616
+ * CY8CTMA4XX
  *
- * Copyright (C) 2009-2011 Cypress Semiconductor, Inc.
+ * Copyright (C) 2009-2012 Cypress Semiconductor, Inc.
  * Copyright (C) 2011 Motorola Mobility, Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@
 #include <linux/i2c.h>
 #include <linux/slab.h>
 
-#define CY_I2C_DATA_SIZE  256
+#define CY_I2C_DATA_SIZE  (3 * 256)
 
 struct cyttsp4_i2c {
 	struct cyttsp4_bus_ops ops;
@@ -42,7 +42,7 @@ struct cyttsp4_i2c {
 };
 
 static s32 cyttsp4_i2c_read_block_data(void *handle, u16 subaddr,
-	u8 length, void *values, int i2c_addr, bool use_subaddr)
+	size_t length, void *values, int i2c_addr, bool use_subaddr)
 {
 	struct cyttsp4_i2c *ts = container_of(handle, struct cyttsp4_i2c, ops);
 	int retval = 0;
@@ -72,7 +72,7 @@ read_packet:
 }
 
 static s32 cyttsp4_i2c_write_block_data(void *handle, u16 subaddr,
-	u8 length, const void *values, int i2c_addr, bool use_subaddr)
+	size_t length, const void *values, int i2c_addr, bool use_subaddr)
 {
 	struct cyttsp4_i2c *ts = container_of(handle, struct cyttsp4_i2c, ops);
 	int retval;
@@ -94,17 +94,22 @@ static int __devinit cyttsp4_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	struct cyttsp4_i2c *ts;
+	int retval = 0;
 
-	printk(KERN_INFO "cypress probe started\n");
+	pr_info("%s: Starting %s probe...\n", __func__, CY_I2C_NAME);
 
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
-		return -EIO;
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		pr_err("%s: fail check I2C functionality\n", __func__);
+		retval = -EIO;
+		goto cyttsp4_i2c_probe_exit;
+	}
 
 	/* allocate and clear memory */
-	ts = kzalloc(sizeof(*ts), GFP_KERNEL);
-	if (!ts) {
-		dev_dbg(&client->dev, "%s: Error, kzalloc.\n", __func__);
-		return -ENOMEM;
+	ts = kzalloc(sizeof(struct cyttsp4_i2c), GFP_KERNEL);
+	if (ts == NULL) {
+		pr_err("%s: Error, kzalloc.\n", __func__);
+		retval = -ENOMEM;
+		goto cyttsp4_i2c_probe_exit;
 	}
 
 	/* register driver_data */
@@ -116,15 +121,21 @@ static int __devinit cyttsp4_i2c_probe(struct i2c_client *client,
 	ts->ops.dev->bus = &i2c_bus_type;
 
 	ts->ttsp_client = cyttsp4_core_init(&ts->ops, &client->dev,
-			client->irq, client->name);
+		client->irq, client->name);
+
 	if (ts->ttsp_client == NULL) {
 		kfree(ts);
-		return -ENODATA;
+		ts = NULL;
+		retval = -ENODATA;
+		pr_err("%s: Registration fail ret=%d\n", __func__, retval);
+		goto cyttsp4_i2c_probe_exit;
 	}
 
-	dev_dbg(ts->ops.dev, "%s: Registration complete\n", __func__);
+	dev_info(ts->ops.dev,
+			"%s: Registration complete\n", __func__);
 
-	return 0;
+cyttsp4_i2c_probe_exit:
+	return retval;
 }
 
 
@@ -139,7 +150,13 @@ static int __devexit cyttsp4_i2c_remove(struct i2c_client *client)
 	return 0;
 }
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+static int cyttsp4_i2c_shutdown(struct i2c_client *client)
+{
+	return 0;
+}
+
+#if !defined(CONFIG_HAS_EARLYSUSPEND) && !defined(CONFIG_PM_SLEEP)
+#if defined(CONFIG_PM)
 static int cyttsp4_i2c_suspend(struct i2c_client *client, pm_message_t message)
 {
 	struct cyttsp4_i2c *ts = i2c_get_clientdata(client);
@@ -154,6 +171,7 @@ static int cyttsp4_i2c_resume(struct i2c_client *client)
 	return cyttsp4_resume(ts);
 }
 #endif
+#endif
 
 static const struct i2c_device_id cyttsp4_i2c_id[] = {
 	{ CY_I2C_NAME, 0 },  { }
@@ -163,13 +181,21 @@ static struct i2c_driver cyttsp4_i2c_driver = {
 	.driver = {
 		.name = CY_I2C_NAME,
 		.owner = THIS_MODULE,
+#if !defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM_SLEEP)
+		.pm = &cyttsp4_pm_ops,
+#endif
+#endif
 	},
 	.probe = cyttsp4_i2c_probe,
 	.remove = __devexit_p(cyttsp4_i2c_remove),
+	.shutdown = cyttsp4_i2c_shutdown,
 	.id_table = cyttsp4_i2c_id,
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if !defined(CONFIG_HAS_EARLYSUSPEND) && !defined(CONFIG_PM_SLEEP)
+#if defined(CONFIG_PM)
 	.suspend = cyttsp4_i2c_suspend,
 	.resume = cyttsp4_i2c_resume,
+#endif
 #endif
 };
 
@@ -186,7 +212,7 @@ static void __exit cyttsp4_i2c_exit(void)
 module_init(cyttsp4_i2c_init);
 module_exit(cyttsp4_i2c_exit);
 
-MODULE_ALIAS("i2c:cyttsp4");
+MODULE_ALIAS(CY_I2C_NAME);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product (TTSP) I2C driver");
 MODULE_AUTHOR("Cypress");

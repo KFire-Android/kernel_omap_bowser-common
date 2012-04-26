@@ -34,6 +34,9 @@
 #include <linux/slab.h>
 #include <linux/i2c/twl.h>
 #include <linux/delay.h>
+#ifdef CONFIG_LAB126
+#include <linux/metricslog.h>
+#endif
 
 #define PWR_PWRON_IRQ (1 << 0)
 #define STS_HW_CONDITIONS 0x21
@@ -81,6 +84,11 @@ static irqreturn_t powerbutton_irq(int irq, void *_pwr)
 	static int prev_hw_state = 0xFFFF;
 	static int push_release_flag;
 
+#ifdef CONFIG_LAB126
+	char *action;
+	char buf[128];
+#endif
+
 	hw_state = twl6030_readb(pwr, TWL6030_MODULE_ID0, STS_HW_CONDITIONS);
 	pwr_val = !(hw_state & PWR_PWRON_IRQ);
 	if ((prev_hw_state != pwr_val) && (prev_hw_state != 0xFFFF)) {
@@ -101,6 +109,11 @@ static irqreturn_t powerbutton_irq(int irq, void *_pwr)
 
 	prev_hw_state = pwr_val;
 
+#ifdef CONFIG_LAB126
+	action = pwr_val ? "press" : "release";
+	sprintf(buf, "%s:powi%c:action=%s:", __func__, action[0], action);
+	log_to_metrics(ANDROID_LOG_INFO, "PowerKeyEvent", buf);
+#endif
 	return IRQ_HANDLED;
 }
 

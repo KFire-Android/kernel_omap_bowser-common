@@ -59,6 +59,10 @@
 #include "vc.h"
 #include "control.h"
 
+#if defined(CONFIG_LAB126)
+#include <linux/metricslog.h>
+#endif
+
 struct power_state {
 	struct powerdomain *pwrdm;
 	u32 next_state;
@@ -511,17 +515,56 @@ abort_gpio:
 #define MODULEMODE_DISABLED	0x0
 #define MODULEMODE_AUTO		0x1
 
+#if defined(CONFIG_LAB126)
+static struct work_struct metrics_work;
+static struct work_struct metrics_work_offmode;
+static char metrics_buf[512];
+static char metrics_buf_offmode[512];
+#endif
+
+static void wokeup_metrics(void *ptr)
+{
+	log_to_metrics(ANDROID_LOG_INFO, "kernel", metrics_buf);
+}
+
+static void wokeup_metrics_offmode(void *ptr)
+{
+       log_to_metrics(ANDROID_LOG_INFO, "kernel", metrics_buf_offmode);
+}
+
 static void _print_wakeirq(int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
 
-	if (irq == OMAP44XX_IRQ_LOCALTIMER)
+	if (irq == OMAP44XX_IRQ_LOCALTIMER) {
 		pr_info("Resume caused by IRQ %d, localtimer\n", irq);
-	else if (!desc || !desc->action || !desc->action->name)
+
+#if defined(CONFIG_LAB126)
+		snprintf(metrics_buf, sizeof(metrics_buf),
+			"system_resume:woke_up:source=irq%d,name=localtimer:", irq);
+#endif
+	} else if (!desc || !desc->action || !desc->action->name) {
 		pr_info("Resume caused by IRQ %d\n", irq);
-	else
+
+#if defined(CONFIG_LAB126)
+		snprintf(metrics_buf, sizeof(metrics_buf),
+			"system_resume:woke_up:source=irq%d:", irq);
+#endif
+	} else {
 		pr_info("Resume caused by IRQ %d, %s\n", irq,
 			desc->action->name);
+
+#if defined(CONFIG_LAB126)
+		snprintf(metrics_buf, sizeof(metrics_buf),
+			"system_resume:woke_up:source=irq%d,name=%s:",
+			irq, desc->action->name);
+#endif
+	}
+
+#if defined(CONFIG_LAB126)
+	/* We cannot call log_to_metrics in an interrupt context */
+	schedule_work(&metrics_work);
+#endif
 }
 
 static void _print_gpio_wakeirq(int irq)
@@ -641,12 +684,26 @@ static void _print_prcm_wakeirq(int irq)
 			for_each_set_bit(bit, &wkevt, 32) {
 				pr_info("Resume caused by I/O pad: CONTROL_PADCONF_WAKEUPEVENT_%d[%d]\n",
 					i, bit);
+
+#if defined(CONFIG_LAB126)
+				snprintf(metrics_buf, sizeof(metrics_buf),
+					"system_resume:woke_up:source=CONTROL_PADCONF_WAKEUPEVENT_%d[%d]:",
+					i, bit);
+				schedule_work(&metrics_work);
+#endif
 				iopad_wake_found = 1;
 			}
 		}
 		wkup_pad_event = omap_readl(CONTROL_WKUP_PADCONF_WAKEUPEVENT_0);
 		for_each_set_bit(bit, &wkup_pad_event, 25) {
 			pr_info("Resume caused by wakeup I/O pad: CONTROL_WKUP_PADCONF_WAKEUPEVENT_0[%d]\n", bit);
+
+#if defined(CONFIG_LAB126)
+			snprintf(metrics_buf, sizeof(metrics_buf),
+				"system_resume:woke_up:source=CONTROL_PADCONF_WAKEUPEVENT_0[%d]:",
+				bit);
+			schedule_work(&metrics_work);
+#endif
 			iopad_wake_found = 1;
 		}
 	}
@@ -924,6 +981,13 @@ static int omap4_pm_suspend(void)
 		pr_err("Could not enter target state in pm_suspend\n");
 	else
 		pr_err("Successfully put all powerdomains to target state\n");
+
+#if defined(CONFIG_LAB126)
+	snprintf(metrics_buf_offmode, sizeof(metrics_buf_offmode),
+		"system_resume:off_mode:%s=1:",
+		ret == 0 ? "success" : "fail");
+	schedule_work(&metrics_work_offmode);
+#endif
 
 	return 0;
 }

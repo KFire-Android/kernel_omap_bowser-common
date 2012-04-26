@@ -45,6 +45,7 @@
 #include <trace/events/asoc.h>
 
 #define NAME_SIZE	32
+#define DEBUG
 
 static DECLARE_WAIT_QUEUE_HEAD(soc_pm_waitq);
 
@@ -798,10 +799,15 @@ int soc_pcm_close(struct snd_pcm_substream *substream)
 	cpu_dai->runtime = NULL;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		/* start delayed pop wq here for playback streams */
-		codec_dai->pop_wait = 1;
-		schedule_delayed_work(&rtd->delayed_work,
-			msecs_to_jiffies(rtd->pmdown_time));
+		/*no longer using the pmdown_time to schedule the delayed work, 
+		  since soc_dsp.c called snd_soc_dapm_stream_event earlier anyway*/
+		/*schedule_delayed_work(&rtd->delayed_work,
+		  msecs_to_jiffies(rtd->pmdown_time));*/
+
+		snd_soc_dapm_stream_event(rtd,
+					  codec_dai->driver->playback.stream_name,
+					  SND_SOC_DAPM_STREAM_STOP);
+		
 	} else {
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd,
@@ -1413,6 +1419,12 @@ static void soc_resume_deferred(struct work_struct *work)
 
 	if (card->resume_post)
 		card->resume_post(card);
+	
+	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
+		mutex_lock(&codec->mutex);
+		snd_soc_dapm_sync(&codec->dapm);
+		mutex_unlock(&codec->mutex);
+	}
 
 	dev_dbg(card->dev, "resume work completed\n");
 

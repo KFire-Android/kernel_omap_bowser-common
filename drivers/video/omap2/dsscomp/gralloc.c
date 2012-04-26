@@ -241,24 +241,41 @@ transfer_done:
 
 static void dsscomp_gralloc_do_clone(struct work_struct *work)
 {
-#ifdef CONFIG_DEBUG_FS
-	u32 ms1, ms2;
-#endif
+//#ifdef CONFIG_DEBUG_FS
+//	u32 ms1, ms2;
+//#endif
 	struct dsscomp_clone_work *wk = container_of(work, typeof(*wk), work);
+	int skip;
 
 	BUG_ON(wk->comp->state != DSSCOMP_STATE_ACTIVE);
-#ifdef CONFIG_DEBUG_FS
-	ms1 = ktime_to_ms(ktime_get());
-#endif
-	dsscomp_gralloc_transfer_dmabuf(wk->dma_cfg);
-#ifdef CONFIG_DEBUG_FS
-	ms2 = ktime_to_ms(ktime_get());
-	dev_info(DEV(cdev), "DMA latency(msec) = %lld\n", ms2-ms1);
-#endif
+//#ifdef CONFIG_DEBUG_FS
+//	ms1 = ktime_to_ms(ktime_get());
+//#endif
+
+	mutex_lock(&mtx);
+	/* ignore deferred frames if we've since been blanked */
+	skip = blanked;
+	mutex_unlock(&mtx);
+
+	if (!skip)
+		dsscomp_gralloc_transfer_dmabuf(wk->dma_cfg);
+
+//#ifdef CONFIG_DEBUG_FS
+//	ms2 = ktime_to_ms(ktime_get());
+//	dev_info(DEV(cdev), "DMA latency(msec) = %lld\n", ms2-ms1);
+//#endif
+	mutex_lock(&mtx);
+	/* ignore deferred frames if we've since been blanked */
+	skip |= blanked;
+	mutex_unlock(&mtx);
 
 	wk->comp->state = DSSCOMP_STATE_APPLYING;
-	if (dsscomp_apply(wk->comp))
+	/* ignore deferred frames if we've since been blanked */
+	if (skip || dsscomp_apply(wk->comp))
 		dsscomp_mgr_callback(wk->comp, -1, DSS_COMPLETION_ECLIPSED_SET);
+	if (skip)
+		dev_info(DEV(cdev), "Skipped DMA clone\n");
+
 	kfree(wk);
 }
 
@@ -301,16 +318,8 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 
 	mutex_lock(&mtx);
 
-	/* allocate sync object with 1 temporary ref */
-	gsync = kmem_cache_zalloc(gsync_cachep, GFP_KERNEL);
-	if (!gsync) {
-		mutex_unlock(&mtx);
-		mutex_unlock(&local_mtx);
-		pr_err("DSSCOMP: %s: can't allocate object from cache\n",
-								__func__);
-		BUG();
-	}
-
+	/* create sync object with 1 temporary ref */
+	gsync = kzalloc(sizeof(*gsync), GFP_KERNEL);
 	gsync->cb_arg = cb_arg;
 	gsync->cb_fn = cb_fn;
 	gsync->refs.counter = 1;
@@ -588,6 +597,9 @@ skip_map1d:
 					"dsscomp wq start failed");
 				atomic_dec(&gsync->refs);
 			}
+			else
+				ovl_use_mask[ch] = ovl_new_use_mask[ch];
+
 			continue;
 		}
 

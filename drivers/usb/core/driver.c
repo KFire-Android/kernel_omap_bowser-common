@@ -1058,7 +1058,7 @@ static int usb_resume_device(struct usb_device *udev, pm_message_t msg)
 	status = udriver->resume(udev, msg);
 
  done:
-	dev_vdbg(&udev->dev, "%s: status %d\n", __func__, status);
+	dev_info(&udev->dev, "%s: status %d\n", __func__, status);
 	return status;
 }
 
@@ -1250,6 +1250,14 @@ static int usb_resume_both(struct usb_device *udev, pm_message_t msg)
 	int			status = 0;
 	int			i;
 	struct usb_interface	*intf;
+	int resume_intf = 0;
+
+	dev_info(&udev->dev,">>> %s: resuming usb\n",__func__);
+	if (atomic_cmpxchg(&udev->resuming, 0, 1) == 1) {
+		dev_info(&udev->dev,">>> %s: usb resume in progress\n", __func__);
+		dump_stack();
+		return 0;
+	}
 
 	if (udev->state == USB_STATE_NOTATTACHED) {
 		status = -ENODEV;
@@ -1257,12 +1265,17 @@ static int usb_resume_both(struct usb_device *udev, pm_message_t msg)
 	}
 	udev->can_submit = 1;
 
+	if (udev->state != USB_STATE_SUSPENDED )
+		dev_info(&udev->dev,">>> %s: usb device not suspended\n",__func__);
+
 	/* Resume the device */
-	if (udev->state == USB_STATE_SUSPENDED || udev->reset_resume)
+	if (udev->state == USB_STATE_SUSPENDED || udev->reset_resume) {
 		status = usb_resume_device(udev, msg);
+		resume_intf = 1;
+	}
 
 	/* Resume the interfaces */
-	if (status == 0 && udev->actconfig) {
+	if (resume_intf == 1 && status == 0 && udev->actconfig) {
 		for (i = 0; i < udev->actconfig->desc.bNumInterfaces; i++) {
 			intf = udev->actconfig->interface[i];
 			usb_resume_interface(udev, intf, msg,
@@ -1275,6 +1288,8 @@ static int usb_resume_both(struct usb_device *udev, pm_message_t msg)
 	dev_vdbg(&udev->dev, "%s: status %d\n", __func__, status);
 	if (!status)
 		udev->reset_resume = 0;
+	atomic_set(&udev->resuming, 0);
+	dev_info(&udev->dev,">>> %s: resumed usb finished\n",__func__);
 	return status;
 }
 
@@ -1315,12 +1330,17 @@ int usb_suspend(struct device *dev, pm_message_t msg)
 	return usb_suspend_both(udev, msg);
 }
 
+extern int usb_device_attached;
 /* The device lock is held by the PM core */
 int usb_resume(struct device *dev, pm_message_t msg)
 {
 	struct usb_device	*udev = to_usb_device(dev);
 	int			status;
 
+	if ((msg.event == PM_EVENT_RESUME) && !usb_device_attached) {
+		printk("++ SKIP: %s\n", dev_name(dev));
+		return 0;
+	}
 	/* For PM complete calls, all we do is rebind interfaces */
 	if (msg.event == PM_EVENT_ON) {
 		if (udev->state != USB_STATE_NOTATTACHED)

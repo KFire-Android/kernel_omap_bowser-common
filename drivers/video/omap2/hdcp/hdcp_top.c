@@ -30,7 +30,15 @@
 #include <linux/firmware.h>
 #include "../../hdmi_ti_4xxx_ip.h"
 #include "../dss/dss.h"
-#include "hdcp.h"
+#include <media/hdcp.h>
+#include <mach/omap4-common.h>
+#include "../../hdmi_ti_4xxx_ip_ddc.h"
+
+#include <linux/cpu.h>
+#include <asm/cacheflush.h>
+#include <linux/dma-mapping.h>
+
+
 
 struct hdcp hdcp;
 struct hdcp_sha_in sha_input;
@@ -62,6 +70,14 @@ static void __exit hdcp_exit(void);
 struct completion hdcp_comp;
 static DECLARE_WAIT_QUEUE_HEAD(hdcp_up_wait_queue);
 static DECLARE_WAIT_QUEUE_HEAD(hdcp_down_wait_queue);
+
+/* PPA encryption API ids */
+#define PPA_SERV_HAL_HDCP_KEY_ENCRYPT 0x0000002C
+#define PPA_SERV_HAL_PEK_KEY_ENCRYPT 0x0000002D
+
+
+#define FLAG_START_HAL_CRITICAL     0x4
+
 
 #define DSS_POWER
 
@@ -119,8 +135,8 @@ static void hdcp_wq_disable(void)
 	printk(KERN_INFO "HDCP: disabled\n");
 
 	hdcp_cancel_work(&hdcp.pending_wq_event);
-	hdcp_lib_disable();
-	hdcp.pending_disable = 0;
+	hdcp_lib_disable(AV_MUTE_CLEAR);
+	ddc.pending_disable = 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -142,6 +158,8 @@ static void hdcp_wq_start_authentication(void)
 		hdcp_wq_authentication_failure();
 	} else if (status == -HDCP_CANCELLED_AUTH) {
 		DBG("Authentication step 1 cancelled.");
+		hdcp.hdcp_state = HDCP_ENABLE_PENDING;
+		hdcp.auth_state = HDCP_STATE_AUTH_FAILURE;
 		return;
 	} else if (status != HDCP_OK) {
 		hdcp_wq_authentication_failure();
@@ -247,8 +265,7 @@ static void hdcp_wq_authentication_failure(void)
 
 	hdcp_cancel_work(&hdcp.pending_wq_event);
 
-	hdcp_lib_disable();
-	hdcp.pending_disable = 0;
+	ddc.pending_disable = 0;
 
 	if (hdcp.retry_cnt && (hdcp.hdmi_state != HDMI_STOPPED)) {
 		if (hdcp.retry_cnt < HDCP_INFINITE_REAUTH) {
@@ -260,6 +277,7 @@ static void hdcp_wq_authentication_failure(void)
 			printk(KERN_INFO "HDCP: authentication failed - "
 					 "retrying\n");
 
+		hdcp_lib_disable(AV_MUTE_SET);
 		hdcp.hdcp_state = HDCP_AUTHENTICATION_START;
 		hdcp.auth_state = HDCP_STATE_AUTH_FAIL_RESTARTING;
 
@@ -268,6 +286,7 @@ static void hdcp_wq_authentication_failure(void)
 	} else {
 		printk(KERN_INFO "HDCP: authentication failed - "
 				 "HDCP disabled\n");
+		hdcp_lib_disable(AV_MUTE_CLEAR);
 		hdcp.hdcp_state = HDCP_ENABLE_PENDING;
 		hdcp.auth_state = HDCP_STATE_AUTH_FAILURE;
 	}
@@ -304,14 +323,16 @@ static void hdcp_work_queue(struct work_struct *work)
 	 * "pending_wq_event" is used to memorize pointer on the event to be
 	 * able to cancel any pending work in case HDCP is disabled
 	 */
-	if (event & HDCP_WORKQUEUE_SRC)
+	mutex_lock(&hdcp.cancel_lock);
+	if ((event & HDCP_WORKQUEUE_SRC) && !(hdcp_w->cancel))
 		hdcp.pending_wq_event = 0;
 
 	/* First handle HDMI state */
-	if (event == HDCP_START_FRAME_EVENT) {
+	if ((event == HDCP_START_FRAME_EVENT) && !(hdcp_w->cancel)) {
 		hdcp.pending_start = 0;
 		hdcp.hdmi_state = HDMI_STARTED;
 	}
+	mutex_unlock(&hdcp.cancel_lock);
 	/**********************/
 	/* HDCP state machine */
 	/**********************/
@@ -368,7 +389,7 @@ static void hdcp_work_queue(struct work_struct *work)
 		/* Ri failure */
 		if (event == HDCP_RI_FAIL_EVENT) {
 			printk(KERN_INFO "HDCP: Ri check failure\n");
-
+			hdcp.hdmi_state = HDMI_STARTED;
 			hdcp_wq_authentication_failure();
 		}
 		/* KSV list ready event */
@@ -387,6 +408,7 @@ static void hdcp_work_queue(struct work_struct *work)
 		/* Ri failure */
 		if (event == HDCP_RI_FAIL_EVENT) {
 			printk(KERN_INFO "HDCP: Ri check failure\n");
+			hdcp.hdmi_state = HDMI_STARTED;
 			hdcp_wq_authentication_failure();
 		}
 		break;
@@ -396,14 +418,17 @@ static void hdcp_work_queue(struct work_struct *work)
 		break;
 	}
 
-	kfree(hdcp_w);
-	hdcp_w = 0;
-	if (event == HDCP_START_FRAME_EVENT)
-		hdcp.pending_start = 0;
-	if (event == HDCP_KSV_LIST_RDY_EVENT ||
-	    event == HDCP_R0_EXP_EVENT) {
-		hdcp.pending_wq_event = 0;
+	mutex_lock(&hdcp.cancel_lock);
+	if (!(hdcp_w->cancel)) {
+		kfree(hdcp_w);
+		hdcp_w = 0;
+		if (event == HDCP_START_FRAME_EVENT)
+			hdcp.pending_start = 0;
+		if (event == HDCP_KSV_LIST_RDY_EVENT ||
+		    event == HDCP_R0_EXP_EVENT)
+			hdcp.pending_wq_event = 0;
 	}
+	mutex_unlock(&hdcp.cancel_lock);
 
 	DBG("hdcp_work_queue() - END - %u hdmi=%d hdcp=%d auth=%d evt=%x %d ",
 		jiffies_to_msecs(jiffies),
@@ -430,6 +455,7 @@ static struct delayed_work *hdcp_submit_work(int event, int delay)
 	if (work) {
 		INIT_DELAYED_WORK(&work->work, hdcp_work_queue);
 		work->event = event;
+		work->cancel = false;
 		queue_delayed_work(hdcp.workqueue,
 				   &work->work,
 				   msecs_to_jiffies(delay));
@@ -448,17 +474,21 @@ static struct delayed_work *hdcp_submit_work(int event, int delay)
  */
 static void hdcp_cancel_work(struct delayed_work **work)
 {
-	int ret = 0;
+	struct hdcp_delayed_work *hdcp_w =
+		container_of(*work, struct hdcp_delayed_work, work);
+	struct delayed_work *w;
 
-	if (*work) {
-		ret = cancel_delayed_work(*work);
-		if (ret != 1) {
-			ret = cancel_work_sync(&((*work)->work));
-			printk(KERN_INFO "Canceling work failed - "
-					 "cancel_work_sync done %d\n", ret);
-		}
-		kfree(*work);
+	mutex_lock(&hdcp.cancel_lock);
+	w = *work;
+	if (w) {
+		hdcp_w->cancel = true;
 		*work = 0;
+		mutex_unlock(&hdcp.cancel_lock);
+		cancel_delayed_work_sync(w);
+		kfree(hdcp_w);
+		hdcp_w = 0;
+	} else {
+		mutex_unlock(&hdcp.cancel_lock);
 	}
 }
 
@@ -506,11 +536,16 @@ static void hdcp_start_frame_cb(void)
 	/* Cancel any pending work */
 	if (hdcp.pending_start)
 		hdcp_cancel_work(&hdcp.pending_start);
-	if (hdcp.pending_wq_event)
+	if (hdcp.pending_wq_event) {
 		hdcp_cancel_work(&hdcp.pending_wq_event);
+		/* On SYNC_LOST there is no synchronization between the cancel
+		 * process and the new hdcp_start_frame_cb, this would cause a
+		 * a problem with the HDCP states */
+		hdcp.hdcp_state = HDCP_ENABLE_PENDING;
+	}
 
 	hdcp.hpd_low = 0;
-	hdcp.pending_disable = 0;
+	ddc.pending_disable = 0;
 	hdcp.retry_cnt = hdcp.en_ctrl->nb_retry;
 	hdcp.pending_start = hdcp_submit_work(HDCP_START_FRAME_EVENT,
 							HDCP_ENABLE_DELAY);
@@ -531,10 +566,9 @@ static void hdcp_irq_cb(int status)
 	}
 
 	/* Disable auto Ri/BCAPS immediately */
-	if (((status & HDMI_RI_ERR) ||
+	if ((status & HDMI_RI_ERR) ||
 	    (status & HDMI_BCAP) ||
-	    (status & HDMI_HPD_LOW)) &&
-	    (hdcp.hdcp_state != HDCP_ENABLE_PENDING)) {
+	    (status & HDMI_HPD_LOW)) {
 		hdcp_lib_auto_ri_check(false);
 		hdcp_lib_auto_bcaps_rdy_check(false);
 	}
@@ -547,7 +581,7 @@ static void hdcp_irq_cb(int status)
 	    (hdcp.hdcp_state != HDCP_ENABLE_PENDING)) {
 		if (status & HDMI_HPD_LOW) {
 			hdcp_lib_set_encryption(HDCP_ENC_OFF);
-			hdcp_ddc_abort();
+			ddc_abort();
 		}
 
 		if (status & HDMI_RI_ERR) {
@@ -561,10 +595,16 @@ static void hdcp_irq_cb(int status)
 	}
 
 	if (status & HDMI_HPD_LOW) {
-		hdcp.pending_disable = 1;	/* Used to exit on-going HDCP
+		ddc.pending_disable = 1;	/* Used to exit on-going HDCP
 						 * work */
 		hdcp.hpd_low = 0;		/* Used to cancel HDCP works */
-		hdcp_lib_disable();
+
+		/* On SYNC_LOST there was a glitch observed (snow) due to the
+		 * enable and disable required to re-enable HDMI */
+		if(!(status & HDMI_SYNC_LOST))
+			hdcp_lib_disable(AV_MUTE_CLEAR);
+
+		ddc.pending_disable = 0;
 		/* In case of HDCP_STOP_FRAME_EVENT, HDCP stop
 		 * frame callback is blocked and waiting for
 		 * HDCP driver to finish accessing the HW
@@ -611,6 +651,8 @@ static long hdcp_enable_ctl(void __user *argp)
 		return -EFAULT;
 	}
 
+	hdcp.en_ctrl->nb_retry = 20;
+
 	/* Post event to workqueue */
 	if (hdcp_submit_work(HDCP_ENABLE_CTL, 0) == 0)
 		return -EFAULT;
@@ -629,7 +671,7 @@ static long hdcp_disable_ctl(void)
 	hdcp_cancel_work(&hdcp.pending_start);
 	hdcp_cancel_work(&hdcp.pending_wq_event);
 
-	hdcp.pending_disable = 1;
+	ddc.pending_disable = 1;
 	/* Post event to workqueue */
 	if (hdcp_submit_work(HDCP_DISABLE_CTL, 0) == 0)
 		return -EFAULT;
@@ -726,12 +768,29 @@ static long hdcp_done_ctl(void __user *argp)
  * Function: hdcp_encrypt_key_ctl
  *-----------------------------------------------------------------------------
  */
+struct ppa_encrypt_control {
+	u8 *in_key;
+	u8 *out_key;
+	uint32_t magic_key;
+	u8 *key_wrap;
+};
+
+#define OMAP4_SRAM_VA           0xfe40d000
+#define OMAP4_SRAM_PA		0x4030d000
+
+
 static long hdcp_encrypt_key_ctl(void __user *argp)
 {
 	struct hdcp_encrypt_control *ctrl;
-	uint32_t *out_key;
+	struct ppa_encrypt_control *pa_ctrl;
+	u8 *in_key_ppa;
+	u8 *out_key_ppa;
+	u8 *key_wrap_ppa;
+	u32 *dbg_ptr;
+	int ret = 0;
+	int i;
 
-	DBG("hdcp_ioctl() - ENCRYPT KEY %u", jiffies_to_msecs(jiffies));
+	DBG("hdcp_ioctl() - HDCP ENCRYPT KEY ^^^^^^^^");
 
 	mutex_lock(&hdcp.lock);
 
@@ -755,51 +814,211 @@ static long hdcp_encrypt_key_ctl(void __user *argp)
 		return -EFAULT;
 	}
 
-	out_key = kmalloc(sizeof(uint32_t) *
-					DESHDCP_KEY_SIZE, GFP_KERNEL);
+	/* Need an uncached region to pass data to PPA: SRAM will do */
+	pa_ctrl = (struct ppa_encrypt_control *)OMAP4_SRAM_VA;
 
-	if (out_key == 0) {
-		printk(KERN_WARNING "HDCP: Cannot allocate memory for HDCP "
-				    "encryption output key\n");
-		kfree(ctrl);
-		mutex_unlock(&hdcp.lock);
-		return -EFAULT;
-	}
+	in_key_ppa = (u8 *)(OMAP4_SRAM_VA + sizeof(struct ppa_encrypt_control));
+	out_key_ppa = (u8 *)(in_key_ppa + sizeof(uint32_t)*DESHDCP_KEY_SIZE_IN);
+	key_wrap_ppa = (u8 *)(out_key_ppa + sizeof(uint32_t)*DESHDCP_KEY_SIZE);
 
 	if (copy_from_user(ctrl, argp,
 				sizeof(struct hdcp_encrypt_control))) {
 		printk(KERN_WARNING "HDCP: Error copying from user space"
 				    " - encrypt ioctl\n");
 		kfree(ctrl);
-		kfree(out_key);
 		mutex_unlock(&hdcp.lock);
 		return -EFAULT;
 	}
 
+	memcpy(in_key_ppa, ctrl->in_key, sizeof(uint32_t)*DESHDCP_KEY_SIZE_IN);
+	memcpy(key_wrap_ppa, ctrl->key_wrap, sizeof(uint32_t)*PEK_KEY_SIZE);
+
 	hdcp_request_dss();
 
 	/* Call encrypt function */
-	hdcp_3des_encrypt_key(ctrl, out_key);
+	DBG("%s calling encrypt function\n", __func__);
+
+	/* Call encrypt function */
+        pa_ctrl->in_key = (u8*)(OMAP4_SRAM_PA + sizeof(struct ppa_encrypt_control));
+        pa_ctrl->out_key = (u8*)(pa_ctrl->in_key + sizeof(uint32_t)*DESHDCP_KEY_SIZE_IN);
+        pa_ctrl->key_wrap = (u8*)(pa_ctrl->out_key + sizeof(uint32_t)*DESHDCP_KEY_SIZE);
+        pa_ctrl->magic_key = ctrl->magic_key;
+
+#ifdef DBG_PRINT
+       	printk("VA: in_key 0x%08x, out_key: 0x%08x, magic key: %d key_wrap 0x%08x\n",
+			&ctrl->in_key[0], &out_key[0], pa_ctrl.magic_key,
+			&ctrl->key_wrap[0]);
+	printk("PA: in_key 0x%08x, out_key: 0x%08x, magic key: %d key_wrap 0x%08x\n",
+			(u32)pa_ctrl->in_key, (u32)pa_ctrl->out_key, pa_ctrl->magic_key,
+			(u32)pa_ctrl->key_wrap);
+#endif
+
+	/*
+	 * Call the HDCP encryption PPA
+	 */
+	ret = omap4_secure_dispatcher(PPA_SERV_HAL_HDCP_KEY_ENCRYPT, FLAG_START_HAL_CRITICAL, 1,
+			OMAP4_SRAM_PA, 0, 0, 0);
+
+	DBG("%s done with encryption (result=%d)\n", __func__ , ret);
 
 	hdcp_release_dss();
 
 	hdcp.hdcp_state = HDCP_DISABLED;
 	mutex_unlock(&hdcp.lock);
 
+#ifdef DBG_PRINT
+
+	if (!ret) {
+		dbg_ptr = (u32*)out_key_ppa;
+		for (i=0;i<160;i++) {
+			printk("HDCP KEK[%d]: 0x%08x\n", i, dbg_ptr[i]);
+		}
+	}
+#endif
+
 	/* Store output data to output pointer */
-	if (copy_to_user(ctrl->out_key, out_key,
+	if (copy_to_user(ctrl->out_key, out_key_ppa,
 				sizeof(uint32_t)*DESHDCP_KEY_SIZE)) {
 		printk(KERN_WARNING "HDCP: Error copying to user space -"
 				    " encrypt ioctl\n");
 		kfree(ctrl);
-		kfree(out_key);
 		return -EFAULT;
 	}
 
+	/* Clean up the area for further usage */
+	memset( out_key_ppa, 0, sizeof(uint32_t)*DESHDCP_KEY_SIZE);
+
 	kfree(ctrl);
-	kfree(out_key);
+	return ret;
+}
+
+
+
+/*-----------------------------------------------------------------------------
+ * Function: hdcp_pek_encrypt_key_ctl
+ *-----------------------------------------------------------------------------
+ */
+struct ppa_pek_encrypt_control {
+	u8 *in_key;
+	u8 *out_key;
+	uint32_t magic_key;
+};
+
+static long hdcp_pek_encrypt_key_ctl(void __user *argp)
+{
+	struct pek_encrypt_control *ctrl;
+	struct ppa_pek_encrypt_control *pa_ctrl;
+	u8 *in_key_ppa;
+	u8 *out_key_ppa;
+	u32 *dbg_ptr;
+	int ret;
+	int i;
+
+	DBG("hdcp_ioctl() - PEK ENCRYPT KEY ********");
+
+	mutex_lock(&hdcp.lock);
+
+	if (hdcp.hdcp_state != HDCP_DISABLED) {
+		printk(KERN_INFO "HDCP: Cannot encrypt keys while HDCP "
+				   "is enabled\n");
+		mutex_unlock(&hdcp.lock);
+		return -EFAULT;
+	}
+
+	hdcp.hdcp_state = HDCP_KEY_ENCRYPTION_ONGOING;
+
+	/* Encryption happens in ioctl / user context */
+	ctrl = kmalloc(sizeof(struct pek_encrypt_control),
+		       GFP_KERNEL);
+
+	if (ctrl == 0) {
+		printk(KERN_WARNING "HDCP: Cannot allocate memory for PEK"
+				    " encryption control struct\n");
+		mutex_unlock(&hdcp.lock);
+		return -EFAULT;
+	}
+
+	if (copy_from_user(ctrl, argp,
+				sizeof(struct pek_encrypt_control))) {
+		printk(KERN_WARNING "HDCP: Error copying from user space"
+				    " - encrypt ioctl\n");
+		kfree(ctrl);
+		mutex_unlock(&hdcp.lock);
+		return -EFAULT;
+	}
+ 
+	/* Need an uncached region to pass data to PPA: SRAM will do */
+	pa_ctrl = (struct ppa_pek_encrypt_control *)OMAP4_SRAM_VA;
+
+	in_key_ppa = (u8 *)(OMAP4_SRAM_VA + sizeof(struct ppa_pek_encrypt_control));	
+	out_key_ppa = (u8 *)(in_key_ppa + (sizeof(uint32_t)*PEK_KEY_SIZE));
+
+	memcpy(in_key_ppa, ctrl->in_key, sizeof(uint32_t)*PEK_KEY_SIZE);
+
+	hdcp_request_dss();
+
+
+#ifdef DBG_PRINT
+	dbg_ptr = (u32*)in_key_ppa;
+	for (i=0;i<8;i++) {
+		printk("PEK in_key[%d]: 0x%08x\n", i, dbg_ptr[i]);
+	}
+#endif
+
+	/* Call encrypt function */
+        pa_ctrl->in_key = (u8*)(OMAP4_SRAM_PA + sizeof(struct ppa_pek_encrypt_control));
+        pa_ctrl->out_key = (u8*)(pa_ctrl->in_key + (sizeof(uint32_t)*PEK_KEY_SIZE));
+        pa_ctrl->magic_key = ctrl->magic_key;
+
+
+#ifdef DBG_PRINT
+	printk("VA: in_key 0x%08x, out_key: 0x%08x, magic_key: %d\n",
+			&ctrl->in_key[0], &out_key[0], ctrl->magic_key);
+
+	printk("PA: in_key 0x%08x, out_key: 0x%08x\n",
+			pa_ctrl.in_key, pa_ctrl.out_key);
+#endif
+
+	/*
+	 * Call the PEK KEK encryption PPA
+	 */
+	ret = omap4_secure_dispatcher(PPA_SERV_HAL_PEK_KEY_ENCRYPT, FLAG_START_HAL_CRITICAL, 1,
+			OMAP4_SRAM_PA, 0, 0, 0);
+
+
+	DBG("%s done with PEK encryption (result=%d)\n", __func__ , ret);
+
+	hdcp_release_dss();
+
+	hdcp.hdcp_state = HDCP_DISABLED;
+	mutex_unlock(&hdcp.lock);
+
+#ifdef DBG_PRINT
+	if (!ret) {
+		dbg_ptr = (u32 *)out_key_ppa;
+		for (i=0;i<8;i++) {
+			printk("PEK out_key[%d]: 0x%08x\n", i, dbg_ptr[i]);
+		}
+	}
+#endif
+
+	/* Store output data to output pointer */
+	if (copy_to_user(ctrl->out_key, out_key_ppa,
+				sizeof(uint32_t)*PEK_KEY_SIZE)) {
+		printk(KERN_WARNING "HDCP: Error copying to user space -"
+				    " encrypt ioctl\n");
+		kfree(ctrl);
+		return -EFAULT;
+	}
+
+	/* Clean up the area for further usage */
+	memset( out_key_ppa, 0, sizeof(uint32_t)*PEK_KEY_SIZE);
+
+	kfree(ctrl);
 	return 0;
 }
+
+
 
 /*-----------------------------------------------------------------------------
  * Function: hdcp_ioctl
@@ -818,6 +1037,9 @@ long hdcp_ioctl(struct file *fd, unsigned int cmd, unsigned long arg)
 
 	case HDCP_ENCRYPT_KEY:
 		return hdcp_encrypt_key_ctl(argp);
+
+	case HDCP_PEK_ENCRYPT_KEY:
+		return hdcp_pek_encrypt_key_ctl(argp);
 
 	case HDCP_QUERY_STATUS:
 		return hdcp_query_status_ctl(argp);
@@ -877,6 +1099,7 @@ static void hdcp_load_keys_cb(const struct firmware *fw, void *context)
 {
 	struct hdcp_enable_control *en_ctrl;
 
+	DBG("**** hdcp_load_keys_cb ****");
 	if (!fw) {
 		pr_err("HDCP: failed to load keys\n");
 		return;
@@ -907,6 +1130,7 @@ static int hdcp_load_keys(void)
 {
 	int ret;
 
+	DBG("**** hdcp_load_keys ****");
 	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 				      "hdcp.keys", mdev.this_device, GFP_KERNEL,
 				      &hdcp, hdcp_load_keys_cb);
@@ -945,6 +1169,7 @@ static int __init hdcp_init(void)
 	}
 
 	mutex_init(&hdcp.lock);
+	mutex_init(&hdcp.cancel_lock);
 
 	mdev.minor = MISC_DYNAMIC_MINOR;
 	mdev.name = "hdcp";
@@ -965,7 +1190,7 @@ static int __init hdcp_init(void)
 	hdcp.pending_wq_event = 0;
 	hdcp.retry_cnt = 0;
 	hdcp.auth_state = HDCP_STATE_DISABLED;
-	hdcp.pending_disable = 0;
+	ddc.pending_disable = 0;
 	hdcp.hdcp_up_event = 0;
 	hdcp.hdcp_down_event = 0;
 	hdcp_wait_re_entrance = 0;
@@ -1002,6 +1227,7 @@ err_add_driver:
 
 err_register:
 	mutex_destroy(&hdcp.lock);
+	mutex_destroy(&hdcp.cancel_lock);
 
 	iounmap(hdcp.deshdcp_base_addr);
 
@@ -1041,6 +1267,7 @@ static void __exit hdcp_exit(void)
 	mutex_unlock(&hdcp.lock);
 
 	mutex_destroy(&hdcp.lock);
+	mutex_destroy(&hdcp.cancel_lock);
 }
 
 /*-----------------------------------------------------------------------------

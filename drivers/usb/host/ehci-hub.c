@@ -29,6 +29,16 @@
 /*-------------------------------------------------------------------------*/
 #include <linux/usb/otg.h>
 #include <linux/gpio.h>
+#ifdef CONFIG_WAN
+#include <linux/bwan.h>
+#endif
+#ifdef CONFIG_LAB126
+#include <linux/metricslog.h>
+#define EHCI_METRICS_STR_LEN 128
+#endif
+
+static int count_resume_error;
+static int phy_failed_exit_low_power_mode;
 
 #define	PORT_WAKE_BITS	(PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E)
 
@@ -744,12 +754,15 @@ ehci_hub_descriptor (
 /*-------------------------------------------------------------------------*/
 
 int omap_ehci_ulpi_write(const struct usb_hcd *hcd, u8 val, u8 reg, u8 retry_times);
-void omap_ehci_hw_phy_reset(const struct usb_hcd *hcd);
+void omap_ehci_hw_phy_reset(const struct usb_hcd *hcd, int);
 #define CM_L3INIT_HSUSBHOST_CLKCTRL	(0x4A009358)
 #define L3INIT_HSUSBHOST_CLKCTRL	(0x4A009358)
 #define OMAP_UHH_SYSCONFIG		(0x4a064010)
 #define OMAP_UHH_SYSSTATUS		(0x4a064014)
 #define OMAP_UHH_HOSTCONFIG		(0x4a064040)
+#define OMAP_TLL_SYSCONFIG		(0x4a062010)
+#define OMAP_TLL_SYSSTATUS		(0x4a062014)
+
 
 void uhh_omap_reset_link(struct ehci_hcd *ehci)
 {
@@ -757,10 +770,14 @@ void uhh_omap_reset_link(struct ehci_hcd *ehci)
 	u32 usbintr_backup;
 	u32 asynclistaddr_backup, periodiclistbase_backup;
 	u32 portsc0_backup;
+	u32 portsc1_backup;
+	u32 portsc2_backup;
 	u32 uhh_sysconfig_backup, uhh_hostconfig_backup;
 	u32 temp_reg;
 	u8 count;
 	u16 orig_val, val;
+	int ret = 0;
+
 
 	/* switch to internal 60Mhz clock */
 	temp_reg = omap_readl(L3INIT_HSUSBHOST_CLKCTRL);
@@ -779,28 +796,26 @@ void uhh_omap_reset_link(struct ehci_hcd *ehci)
 	asynclistaddr_backup = ehci_readl(ehci, &ehci->regs->async_next);
 	periodiclistbase_backup = ehci_readl(ehci, &ehci->regs->frame_list);
 	portsc0_backup = ehci_readl(ehci, &ehci->regs->port_status[0]);
+	portsc1_backup = ehci_readl(ehci, &ehci->regs->port_status[1]);
+	portsc2_backup = ehci_readl(ehci, &ehci->regs->port_status[2]);
 	usbintr_backup = ehci_readl(ehci, &ehci->regs->intr_enable);
 	uhh_sysconfig_backup = omap_readl(OMAP_UHH_SYSCONFIG);
 	uhh_hostconfig_backup = omap_readl(OMAP_UHH_HOSTCONFIG);
+
+	//Reset PHY
+	omap_ehci_hw_phy_reset(ehci_to_hcd(ehci), 0);
+
 
 	/* Soft reset EHCI controller */
 	omap_writel(omap_readl(OMAP_UHH_SYSCONFIG) | (1<<0),
 				OMAP_UHH_SYSCONFIG);
 	/* wait for reset done */
 	count = 10;
-	while ((omap_readl(OMAP_UHH_SYSCONFIG) & (1<<0)) && count--)
+	while ((!(omap_readl(OMAP_UHH_SYSSTATUS) & (1<<2))) && count--)
 		mdelay(1);
 	if (!count)
 		pr_err("ehci:link_reset: soft-reset fail\n");
 
-	/* PHY reset via RESETB pin */
-	omap_ehci_hw_phy_reset(ehci_to_hcd(ehci));
-
-	/* switch back to external 60Mhz clock */
-	temp_reg &= ~(1 << 8);
-	temp_reg |= 1 << 24;
-	omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
-	mdelay(5);
 
 	/*soft reset ehci registers */
 	ehci_writel(ehci, (1<<1), &ehci->regs->command);
@@ -810,9 +825,23 @@ void uhh_omap_reset_link(struct ehci_hcd *ehci)
 	if (!count)
 		pr_err("ehci:link_reset: soft-reset fail\n");
 
+	count = 10;
+	printk(">>>>>>>>> reset TLL block <<<<<<<<\n");
+	/* Soft reset EHCI controller */
+	omap_writel(omap_readl(OMAP_TLL_SYSCONFIG) | (1<<0),
+				OMAP_TLL_SYSCONFIG);
+	/* wait for reset done */
+	count = 10;
+	while ((!(omap_readl(OMAP_TLL_SYSSTATUS) & (1<<0))) && count--)
+		mdelay(1);
+	if (!count)
+		pr_err("ehci:link_reset: soft-reset fail\n");
+
+
 	/* Restore registers after reset */
 	omap_writel(uhh_sysconfig_backup, OMAP_UHH_SYSCONFIG);
 	omap_writel(uhh_hostconfig_backup, OMAP_UHH_HOSTCONFIG);
+
 	ehci_writel(ehci, periodiclistbase_backup, &ehci->regs->frame_list);
 	ehci_writel(ehci, asynclistaddr_backup, &ehci->regs->async_next);
 	ehci_writel(ehci, FLAG_CF, &ehci->regs->configured_flag);
@@ -820,26 +849,88 @@ void uhh_omap_reset_link(struct ehci_hcd *ehci)
 	ehci_writel(ehci, usbcmd_backup, &ehci->regs->command);
 	mdelay(2);
 	ehci_writel(ehci, PORT_POWER, &ehci->regs->port_status[0]);
+	ehci_writel(ehci, PORT_POWER, &ehci->regs->port_status[1]);
+	ehci_writel(ehci, PORT_POWER, &ehci->regs->port_status[2]);
 
-	/* Put PHY in good default state */
-	if (omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x20, 0x5, 20) < 0) {
+	//Reset complete
+	omap_ehci_hw_phy_reset(ehci_to_hcd(ehci), 1);
+
+	/* switch back to external 60Mhz clock */
+	temp_reg &= ~(1 << 8);
+	temp_reg |= 1 << 24;
+	omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
+	mdelay(5);
+
+	count = 1;
+
+	while (count++ < 10) {
+
+		/* Put PHY in good default state */
+		ret = omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x20, 0x5, 20);
+
+		if (!ret) {
+			break;
+		}
+
+		printk("%s: PHY not exiting LOW power mode - tried %d times\n",
+									__func__,
+									count);
 		/* Toggle STP line */
-		orig_val = val = omap_readw(0x4A1000C4);
+		orig_val = val = omap_readw(0x4A100162);
 		val |= 0x1F;
-		omap_writew(val, 0x4A1000C4);
-		mdelay(3);
-		omap_writew(orig_val, 0x4A1000C4);
-		omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x20, 0x5, 20);
+		omap_writew(val, 0x4A100162);
+		mdelay(10);
+		omap_writew(orig_val, 0x4A100162);
+		omap_ehci_hw_phy_reset(ehci_to_hcd(ehci), 0);
+		mdelay(10);
+		omap_ehci_hw_phy_reset(ehci_to_hcd(ehci), 1);
 	}
 
+	if(count >= 10)
+		phy_failed_exit_low_power_mode = count;
+
+
 	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x41, 0x4, 20);
-	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x18, 0x7, 20);
 	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x66, 0xA, 20);
 	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x45, 0x4, 20);
 
-	handshake(ehci, &ehci->regs->port_status[0], PORT_CONNECT, 1, 2000);
+	/*Set UseExternalVbusindicator to "1" */
+	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x80, 0x0B, 20);
+	/*Set Indicatorpasstrou to "1" */
+	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x40, 0x08, 20);
+
+
 	ehci_writel(ehci, usbintr_backup, &ehci->regs->intr_enable);
+
 }
+
+extern struct usb_hcd *omap_ehci_hcd;
+
+void uhh_omap_reset_link_lock()
+{
+	if (!omap_ehci_hcd) return;
+
+	struct ehci_hcd *ehci = hcd_to_ehci(omap_ehci_hcd);
+	struct usb_hcd	*hcd = ehci_to_hcd(ehci);
+	struct device *dev = hcd->self.controller;
+
+	if (!ehci)
+		return;
+
+
+	if (dev->parent)
+		pm_runtime_get_sync(dev->parent);
+
+	spin_lock_irq(&ehci->lock);
+	uhh_omap_reset_link(ehci);
+	spin_unlock_irq(&ehci->lock);
+
+
+	if (dev->parent)
+		pm_runtime_put_sync(dev->parent);
+}
+
+EXPORT_SYMBOL(uhh_omap_reset_link_lock);
 
 static int ehci_hub_control (
 	struct usb_hcd	*hcd,
@@ -858,7 +949,11 @@ static int ehci_hub_control (
 	unsigned long	flags;
 	int		retval = 0;
 	unsigned	selector;
-
+	int 		port_resume_error= 0;
+	int 		retval_resume_error = 0;
+#ifdef CONFIG_LAB126
+	char buff[EHCI_METRICS_STR_LEN];
+#endif
 	/*
 	 * FIXME:  support SetPortFeatures USB_PORT_FEAT_INDICATOR.
 	 * HCS_INDICATOR may say we can change LEDs to off/amber/green.
@@ -931,6 +1026,12 @@ static int ehci_hub_control (
 			/* resume signaling for 20 msec */
 			temp &= ~(PORT_RWC_BITS | PORT_WAKE_BITS);
 			ehci_writel(ehci, temp | PORT_RESUME, status_reg);
+
+#ifdef CONFIG_WAN
+			mb();
+			mdelay(5);
+			gpio_direction_output(WAN_USB_RESUME_GPIO, 1);
+#endif
 			ehci->reset_done[wIndex] = jiffies
 					+ msecs_to_jiffies(20);
 			break;
@@ -1021,31 +1122,72 @@ static int ehci_hub_control (
 			else if (time_after_eq(jiffies,
 					ehci->reset_done[wIndex])) {
 
+#ifdef CONFIG_WAN
+				gpio_direction_output(WAN_USB_RESUME_GPIO, 0);
+#endif
+				unsigned long flags;
+				DEFINE_SPINLOCK(resume_lock);
+
 				clear_bit(wIndex, &ehci->suspended_ports);
 				set_bit(wIndex, &ehci->port_c_suspend);
 				ehci->reset_done[wIndex] = 0;
+
+
+				/* Disable interrupts and preemption on this cpu */
+				spin_lock_irqsave(&resume_lock, flags);
 
 				/* stop resume signaling */
 				temp = ehci_readl(ehci, status_reg);
 				ehci_writel(ehci,
 					temp & ~(PORT_RWC_BITS | PORT_RESUME),
 					status_reg);
+
+#define	EHCI_INSNREG05_ULPI_CONTROL_SHIFT		31
+#define	EHCI_INSNREG05_ULPI_PORTSEL_SHIFT		24
+#define	EHCI_INSNREG05_ULPI_OPSEL_SHIFT			22
+#define	EHCI_INSNREG05_ULPI_REGADD_SHIFT		16
+#define	EHCI_INSNREG05_ULPI_EXTREGADD_SHIFT		8
+#define	EHCI_INSNREG05_ULPI_WRDATA_SHIFT		0
+				omap_writel( (0x40 |
+						((0x4) << EHCI_INSNREG05_ULPI_REGADD_SHIFT)
+						/* Write */
+						| (2 << EHCI_INSNREG05_ULPI_OPSEL_SHIFT)
+						/* PORTn */
+						| ((2) << EHCI_INSNREG05_ULPI_PORTSEL_SHIFT)
+						/* start ULPI access*/
+						| (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT)),
+						0x4A064CA4);
+
+
+				/* barrier to flush ulpi write */
+				mb();
+
+				(void)omap_readl(0x4A064CA4);
+
+				/* End of Critical section */
+				spin_unlock_irqrestore(&resume_lock, flags);
+
 				retval = handshake(ehci, status_reg,
 					   PORT_RESUME, 0, 2000 /* 2msec */);
-				if (retval != 0) {
-					ehci_err(ehci,
-						"port %d resume error %d\n",
-						wIndex + 1, retval);
+				if ((retval != 0)) {
 
-						if (ehci->has_smsc_ulpi_bug)
-							ehci->resume_error_flag = 1;
+						printk("port %d resume error %d and count %d\n", wIndex + 1, retval,count_resume_error++);
 
+						dbg_port (ehci, "GetStatus", wIndex + 1, ehci_readl(ehci, status_reg));
+
+						port_resume_error =1;
+						retval_resume_error = retval;
+
+						/* Reset the link if resume fails */
 						uhh_omap_reset_link(ehci);
+
 						goto error;
 				}
 
-				/* restore registers value to its original state*/
-				if (ehci->resume_error_flag) {
+				/* Special workaround for resume error for SMSC PHY's */
+				if (USB_PHY_SMSC_3316_PID == ehci->usb_phy_smsc_pid) {
+					omap_ehci_ulpi_write(hcd, 0x04, 0x39, 20);
+				} else if (USB_PHY_SMSC_333X_PID == ehci->usb_phy_smsc_pid) {
 					omap_ehci_ulpi_write(hcd, 0x00, 0x32, 20);
 					omap_ehci_ulpi_write(hcd, 0x04, 0x39, 20);
 				}
@@ -1174,13 +1316,21 @@ static int ehci_hub_control (
 					|| (temp & PORT_RESET) != 0)
 				goto error;
 
-			/*
-			* Special workaround for resume error
-			*  - Write 04h to register 32h : inserts a 2uA source current on DP
-			*  - Write 14h to register 39h : enables 125kohm pull up resistors on DP
-			*/
-			if (ehci->resume_error_flag) {
-				omap_ehci_ulpi_write(hcd, 0x04, 0x32, 20);
+			/* Special workaround for resume error for SMSC PHY's */
+			if (USB_PHY_SMSC_3316_PID == ehci->usb_phy_smsc_pid) {
+				/* Write 14h to register 39h:
+				 * Turns on ChargerPullupEnDp 125K pull-up to 3.3V on DP
+				 */
+				omap_ehci_ulpi_write(hcd, 0x14, 0x39, 20);
+			} else if (USB_PHY_SMSC_333X_PID == ehci->usb_phy_smsc_pid) {
+				/* Write 07h to register 32h:
+				 * IDatSinken: Enable 50-150uA current sink on DM
+				 * ContactDetectEn: enables 7-13 uA on DP
+				 */
+				omap_ehci_ulpi_write(hcd, 0x07, 0x32, 20);
+				 /* Write 14h to register 39h:
+				  * ChargerPullupEnDP: 125K pull-up to 3.3V on DP
+				  */
 				omap_ehci_ulpi_write(hcd, 0x14, 0x39, 20);
 			}
 
@@ -1191,30 +1341,6 @@ static int ehci_hub_control (
 			temp &= ~PORT_WKCONN_E;
 			temp |= PORT_WKDISC_E | PORT_WKOC_E;
 			ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
-
-			/*
-			 * Special workaround sequence:
-			 * - Set suspend bit
-			 * - Wait 4ms for suspend to take effect
-			 *   - alternatively read the line state
-			 *     in PORTSC
-			 * - switch to internal 60 MHz clock
-			 * - wait 1ms
-			 * - switch back to external clock
-			 */
-			{
-				u32 temp_reg;
-				mdelay(4);
-				temp_reg = omap_readl(L3INIT_HSUSBHOST_CLKCTRL);
-				temp_reg |= 1 << 8;
-				temp_reg &= ~(1 << 24);
-				omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
-
-				mdelay(1);
-				temp_reg &= ~(1 << 8);
-				temp_reg |= 1 << 24;
-				omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
-			}
 
 			if (hostpc_reg) {
 				spin_unlock_irqrestore(&ehci->lock, flags);
@@ -1304,6 +1430,25 @@ error:
 	}
 error_exit:
 	spin_unlock_irqrestore (&ehci->lock, flags);
+
+#ifdef CONFIG_LAB126
+	if(port_resume_error)
+	{
+	printk("%s: port %d resume error %d count=%d\n",__func__,wIndex + 1, retval_resume_error, count_resume_error + 1);
+	snprintf(buff,sizeof(buff),"%s: port %d resume error %d count=%d\n",__func__,wIndex + 1, retval_resume_error, count_resume_error + 1);
+	log_to_metrics(ANDROID_LOG_INFO, "Ehci error", buff);
+	port_resume_error =0;
+	}
+
+	if(phy_failed_exit_low_power_mode)
+	{
+		snprintf(buff,sizeof(buff)," %s: PHY didn't exit from low power mode after %d tries\n",
+						__func__,
+						phy_failed_exit_low_power_mode);
+		log_to_metrics(ANDROID_LOG_INFO, "PHY error", buff);
+		phy_failed_exit_low_power_mode = 0;
+	}
+#endif
 	return retval;
 }
 

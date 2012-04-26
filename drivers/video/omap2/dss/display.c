@@ -535,6 +535,11 @@ static int dss_resume_device(struct device *dev, void *data)
 	int r;
 	struct omap_dss_device *dssdev = to_dss_device(dev);
 
+	if (!dssdev->activate_after_resume && !strcmp(dssdev->name, "hdmi")) {
+		if (hdmi_get_current_hpd())
+			hdmi_panel_hpd_handler(1);
+	}
+
 	if (dssdev->activate_after_resume && dssdev->driver->resume) {
 		r = dssdev->driver->resume(dssdev);
 		if (r)

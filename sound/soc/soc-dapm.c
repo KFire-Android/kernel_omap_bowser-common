@@ -548,7 +548,7 @@ static int snd_soc_dapm_set_bias_level(struct snd_soc_dapm_context *dapm,
 	trace_snd_soc_bias_level_start(card, level);
 
 	if (card && card->set_bias_level)
-		ret = card->set_bias_level(card, level);
+		ret = card->set_bias_level(card, dapm, level);
 	if (ret == 0) {
 		if (dapm->codec && dapm->codec->driver->set_bias_level)
 			ret = dapm->codec->driver->set_bias_level(dapm->codec, level);
@@ -557,7 +557,7 @@ static int snd_soc_dapm_set_bias_level(struct snd_soc_dapm_context *dapm,
 	}
 	if (ret == 0) {
 		if (card && card->set_bias_level_post)
-			ret = card->set_bias_level_post(card, level);
+			ret = card->set_bias_level_post(card, dapm, level);
 	}
 
 	trace_snd_soc_bias_level_done(card, level);
@@ -2029,6 +2029,9 @@ static int snd_soc_dapm_set_pin(struct snd_soc_dapm_context *dapm,
  */
 int snd_soc_dapm_sync(struct snd_soc_dapm_context *dapm)
 {
+	if (!dapm->card || !dapm->card->instantiated)
+		return 0;
+
 	return dapm_power_widgets(dapm, SND_SOC_DAPM_STREAM_NOP);
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_sync);
@@ -3105,9 +3108,11 @@ static void soc_dapm_shutdown_codec(struct snd_soc_dapm_context *dapm)
 	 * standby.
 	 */
 	if (powerdown) {
-		snd_soc_dapm_set_bias_level(dapm, SND_SOC_BIAS_PREPARE);
+		if (dapm->bias_level == SND_SOC_BIAS_ON)
+			snd_soc_dapm_set_bias_level(dapm, SND_SOC_BIAS_PREPARE);
 		dapm_seq_run(dapm, &down_list, 0, false);
-		snd_soc_dapm_set_bias_level(dapm, SND_SOC_BIAS_STANDBY);
+		if (dapm->bias_level == SND_SOC_BIAS_PREPARE)
+			snd_soc_dapm_set_bias_level(dapm, SND_SOC_BIAS_STANDBY);
 	}
 }
 
@@ -3121,12 +3126,16 @@ void snd_soc_dapm_shutdown(struct snd_soc_card *card)
 
 	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
 		soc_dapm_shutdown_codec(&codec->dapm);
-		snd_soc_dapm_set_bias_level(&codec->dapm, SND_SOC_BIAS_OFF);
+		if (codec->dapm.bias_level == SND_SOC_BIAS_STANDBY)
+			snd_soc_dapm_set_bias_level(&codec->dapm,
+						    SND_SOC_BIAS_OFF);
 	}
 
 	list_for_each_entry(platform, &card->platform_dev_list, card_list) {
 		soc_dapm_shutdown_codec(&platform->dapm);
-		snd_soc_dapm_set_bias_level(&platform->dapm, SND_SOC_BIAS_OFF);
+		if (platform->dapm.bias_level == SND_SOC_BIAS_STANDBY)
+			snd_soc_dapm_set_bias_level(&platform->dapm,
+						    SND_SOC_BIAS_OFF);
 	}
 }
 

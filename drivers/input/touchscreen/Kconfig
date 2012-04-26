@@ -98,6 +98,17 @@ config TOUCHSCREEN_ATMEL_MXT
 	  To compile this driver as a module, choose M here: the
 	  module will be called atmel_mxt_ts.
 
+config TOUCHSCREEN_CYPRESS_TTSP
+        tristate "Cypress TrueTouch Standard Product I2C Touchscreen"
+        depends on I2C
+        help
+                Say Y here if you have Cypress TTSP I2C touchscreen,
+                such as CY8CTMA884/CY8CTMA616, connected to your system.
+
+                If unsure, say N.
+
+                To compile this driver as a module, choose M here
+
 config TOUCHSCREEN_BITSY
 	tristate "Compaq iPAQ H3600 (Bitsy) touchscreen"
 	depends on SA1100_BITSY
@@ -753,12 +764,9 @@ config TOUCHSCREEN_QUANTUM_OBP
 
 	  If unsure, say N.
 
-config TOUCHSCREEN_CYPRESS_TTSP
-	tristate "Cypress True Touch touchscreens"
-	depends on I2C
-	help
-	  Say Y here if you have a Cypress true touch touchscreen.
-
-	  If unsure, say N.
-
+config TOUCHSCREEN_DEBUG_ENABLE_ENTRY
+        tristate "Filter all command to chip on debug mode"
+        depends on I2C
+        help
+          Say Y here to enable debug mode.
 endif

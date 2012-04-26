@@ -547,6 +547,7 @@ static int omap_gpio_request(struct gpio_chip *chip, unsigned offset)
 {
 	struct gpio_bank *bank = container_of(chip, struct gpio_bank, chip);
 	unsigned long flags;
+	int gpio;
 
 	spin_lock_irqsave(&bank->lock, flags);
 	/*
@@ -591,6 +592,9 @@ static int omap_gpio_request(struct gpio_chip *chip, unsigned offset)
 	bank->mod_usage |= 1 << offset;
 
 	spin_unlock_irqrestore(&bank->lock, flags);
+
+	gpio = irq_to_gpio(bank->virtual_irq_start + offset);
+	bank->mux[offset] = omap_mux_get_gpio(gpio);
 
 	return 0;
 }
@@ -1261,6 +1265,7 @@ static int omap_gpio_suspend(struct device *dev)
 	void __iomem *wake_clear;
 	void __iomem *wake_set;
 	unsigned long flags;
+	int j;
 
 	if (!bank->suspend_support)
 		return 0;
@@ -1275,6 +1280,16 @@ static int omap_gpio_suspend(struct device *dev)
 	bank->saved_wakeup = __raw_readl(wake_status);
 	__raw_writel(0xffffffff, wake_clear);
 	__raw_writel(bank->suspend_wakeup, wake_set);
+
+	/*
+	 * Disable debounce clock during suspend
+	 *
+	 * If we want L4PER to enter RET, we should disable
+	 * option clocks.
+	 */
+	for (j = 0; j < hweight_long(bank->dbck_enable_mask); j++)
+		clk_disable(bank->dbck);
+
 	spin_unlock_irqrestore(&bank->lock, flags);
 
 	pm_runtime_put_sync(dev);
@@ -1289,6 +1304,7 @@ static int omap_gpio_resume(struct device *dev)
 	void __iomem *wake_clear;
 	void __iomem *wake_set;
 	unsigned long flags;
+	int j;
 
 	if (!bank->suspend_support)
 		return 0;
@@ -1302,6 +1318,10 @@ static int omap_gpio_resume(struct device *dev)
 	__raw_writel(0xffffffff, wake_clear);
 	__raw_writel(bank->saved_wakeup, wake_set);
 	spin_unlock_irqrestore(&bank->lock, flags);
+
+	/* Enable debounce clock back */
+	for (j = 0; j < hweight_long(bank->dbck_enable_mask); j++)
+		clk_enable(bank->dbck);
 
 	pm_runtime_put_sync(dev);
 

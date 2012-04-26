@@ -537,6 +537,12 @@ config TWL6040_VIB
 	depends on TWL6040_CODEC && ANDROID_TIMED_OUTPUT
 	default n
 
+config MAX1161X
+	bool "Maxim MAX11612/MAX11613/MAX11614/MAX11615/MAX11616/MAX11617 ADC Support"
+	depends on I2C=y
+	help
+	  Say yes here if you have MAX1161x family chip on your board.
+
 config CDC_TCXO
 	tristate "Texas Instruments CDC TCXO"
 	depends on I2C
@@ -555,5 +561,8 @@ source "drivers/misc/gcx/gccore/Kconfig"
 source "drivers/misc/gcx/gcioctl/Kconfig"
 source "drivers/misc/gcx/gcbv/Kconfig"
 source "drivers/misc/cache-2dmanager/Kconfig"
+#JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 {
+source "drivers/misc/inv_mpu/Kconfig"
+#JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 }
 
 endif # MISC_DEVICES

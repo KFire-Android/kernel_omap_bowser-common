@@ -57,3 +57,7 @@ obj-$(CONFIG_GCCORE)		+= gcx/gccore/
 obj-$(CONFIG_GCBV)		+= gcx/gcbv/
 obj-$(CONFIG_GCIOCTL)		+= gcx/gcioctl/
 obj-$(CONFIG_CACHE2DMANAGER)	+= cache-2dmanager/
+#JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 {
+obj-$(CONFIG_INV_SENSORS)       += inv_mpu/
+#JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 }
+obj-$(CONFIG_MAX1161X)		+= max1161x.o

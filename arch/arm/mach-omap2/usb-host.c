@@ -22,18 +22,27 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
+#include <linux/clk.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#include <linux/gpio.h>
 
 #include <asm/io.h>
 
 #include <mach/hardware.h>
 #include <mach/irqs.h>
 #include <plat/usb.h>
+#include <plat/clock.h>
 #include <plat/omap_device.h>
 
 #include "control.h"
 #include "mux.h"
+
+#ifdef CONFIG_LAB126
+#include <linux/metricslog.h>
+#define PHY_METRICS_STR_LEN 128
+#endif
+
 
 #ifdef CONFIG_MFD_OMAP_USB_HOST
 
@@ -63,6 +72,7 @@ static struct usbhs_wakeup {
 	struct work_struct wakeup_work;
 	int wakeup_ehci:1;
 	int wakeup_ohci:1;
+	struct delayed_work wakeup_work_post_phy_wake;
 } *usbhs_wake;
 
 /* MUX settings for EHCI pins */
@@ -173,53 +183,53 @@ static struct omap_device_pad port1_tll_pads[] __initdata = {
 static struct omap_device_pad port2_phy_pads[] __initdata = {
 	{
 		.name = "usbb2_ulpitll_stp.usbb2_ulpiphy_stp",
-		.enable = OMAP_PIN_OUTPUT | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_OUTPUT | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_clk.usbb2_ulpiphy_clk",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dir.usbb2_ulpiphy_dir",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_nxt.usbb2_ulpiphy_nxt",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat0.usbb2_ulpiphy_dat0",
 		.flags  = OMAP_DEVICE_PAD_REMUX | OMAP_DEVICE_PAD_WAKEUP,
-		.enable = (OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4) & ~(OMAP_WAKEUP_EN),
-		.idle	= OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = (OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1) & ~(OMAP_WAKEUP_EN),
+		.idle	= OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat1.usbb2_ulpiphy_dat1",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat2.usbb2_ulpiphy_dat2",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat3.usbb2_ulpiphy_dat3",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat4.usbb2_ulpiphy_dat4",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat5.usbb2_ulpiphy_dat5",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat6.usbb2_ulpiphy_dat6",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 	{
 		.name = "usbb2_ulpitll_dat7.usbb2_ulpiphy_dat7",
-		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE4,
+		.enable = OMAP_PIN_INPUT_PULLDOWN | OMAP_MUX_MODE1,
 	},
 };
 
@@ -814,45 +824,137 @@ int omap4430_usbhs_update_sar(void)
 	return 0;
 }
 
+#define USBB2_ULPIPHY_DAT0 (0x4A100168)
 void usbhs_wakeup()
 {
 	int workq = 0;
+	u16 val;
 
 	if (!usbhs_wake)
 		return;
 
 	if (test_bit(USB_OHCI_LOADED, &usb_hcds_loaded) &&
+	    (omap_hwmod_pad_is_ioring_enabled(usbhs_wake->oh_ohci) == true) &&
 	    omap_hwmod_pad_get_wakeup_status(usbhs_wake->oh_ohci) == true) {
 		usbhs_wake->wakeup_ohci = 1;
 		workq = 1;
 	}
 
 	if (test_bit(USB_EHCI_LOADED, &usb_hcds_loaded) &&
+	    (omap_hwmod_pad_is_ioring_enabled(usbhs_wake->oh_ehci) == true) &&
 	    omap_hwmod_pad_get_wakeup_status(usbhs_wake->oh_ehci) == true) {
 		usbhs_wake->wakeup_ehci = 1;
 		workq = 1;
 	}
 
-	if (workq)
+	if (workq) {
+		printk("***Int: IO pad wake \n");
+		/* Disable IO pad wakeup now that we got first interrupt */
+		val = omap_readw(USBB2_ULPIPHY_DAT0) & ~(OMAP_WAKEUP_EN);
+		omap_writew(val, USBB2_ULPIPHY_DAT0);
 		queue_work(pm_wq, &usbhs_wake->wakeup_work);
+    }
 }
+
+extern struct usb_hcd *omap_ehci_hcd;
+extern struct clk *ehci_phy_ref_clk;
+extern u8 omap_ehci_ulpi_read(const struct usb_hcd *hcd, u8 reg);
+extern int omap_ehci_ulpi_write(const struct usb_hcd *hcd, u8 val, u8 reg, u8 retry_times);
+extern void uhh_omap_reset_link_lock(void);
+extern int usb_device_attached;
 
 static void usbhs_resume_work(struct work_struct *work)
 {
+	struct omap_hwmod       *oh;
+	int ret;
+	int retries = 0;
+	u16 orig_val, val;
+#ifdef CONFIG_LAB126
+	char buff[PHY_METRICS_STR_LEN];
+#endif
+
 	dev_dbg(usbhs_wake->dev, "USB IO PAD Wakeup event triggered\n");
 
-	if (usbhs_wake->wakeup_ehci) {
-		usbhs_wake->wakeup_ehci = 0;
-		omap_hwmod_disable_ioring_wakeup(usbhs_wake->oh_ehci);
-	}
+	oh = omap_hwmod_lookup(USBHS_EHCI_HWMODNAME);
+	if(!ehci_phy_ref_clk->usecount) {
+again:
+		clk_enable(ehci_phy_ref_clk);
+		gpio_direction_output(62, 0);
+		mdelay(10);
 
-	if (usbhs_wake->wakeup_ohci) {
-		usbhs_wake->wakeup_ohci = 0;
-		omap_hwmod_disable_ioring_wakeup(usbhs_wake->oh_ohci);
-	}
-
-	if (pm_runtime_suspended(usbhs_wake->dev))
+		omap_hwmod_disable_ioring_wakeup(oh);
 		pm_runtime_get_sync(usbhs_wake->dev);
+
+		gpio_direction_output(62, 1);
+		mdelay(10);
+
+		/*Set UseExternalVbusindicator to "1" */
+		ret = omap_ehci_ulpi_write(omap_ehci_hcd, 0x80, 0x0B, 20);
+		if (ret < 0) {
+			printk("usbhs: Error: PHY not coming out of low power retry %d\n", retries);
+
+			/* Toggle manually the STP line to get PHY out of low power */
+			orig_val = val = omap_readw(0x4A100162);
+			val |= 0x1F;
+			omap_writew(val, 0x4A100162);
+			mdelay(10);
+			omap_writew(orig_val, 0x4A100162);
+			ret = omap_ehci_ulpi_write(omap_ehci_hcd, 0x80, 0x0B, 20);
+			if (!ret)
+				goto done;
+
+			uhh_omap_reset_link_lock();
+			pm_runtime_put_sync(usbhs_wake->dev);
+			clk_disable(ehci_phy_ref_clk);
+			retries++;
+			if (retries > 10) {
+				pm_runtime_get_sync(usbhs_wake->dev);
+				omap_hwmod_enable_ioring_wakeup(oh);
+				pm_runtime_put_sync(usbhs_wake->dev);
+#ifdef CONFIG_LAB126
+				snprintf(buff,sizeof(buff)," %s: PHY didn't exit from low power mode after 10 tries\n", __func__);
+				log_to_metrics(ANDROID_LOG_INFO, "PHY error", buff);
+#endif
+
+				return;
+			}
+			goto again;
+		}
+
+done:
+		usb_device_attached = 1;
+		/*Set Indicatorpasstrou to "1" */
+		omap_ehci_ulpi_write(omap_ehci_hcd, 0x40, 0x08, 20);
+
+		queue_delayed_work(pm_wq,
+				&usbhs_wake->wakeup_work_post_phy_wake,
+				msecs_to_jiffies(20));
+	}
+}
+
+static void usbhs_resume_work_post_phy_wake(struct work_struct *work)
+{
+	struct omap_hwmod       *oh;
+
+	dev_dbg(usbhs_wake->dev, "USB IO PAD Wakeup event triggered\n");
+
+
+	if (omap_ehci_hcd->state == HC_STATE_SUSPENDED) {
+		omap_ehci_ulpi_write(omap_ehci_hcd, (1<<0), 0x4, 20);
+		clk_disable(ehci_phy_ref_clk);
+		oh = omap_hwmod_lookup(USBHS_EHCI_HWMODNAME);
+		omap_hwmod_enable_ioring_wakeup(oh);
+		pm_runtime_put_sync(usbhs_wake->dev);
+		usb_device_attached = 0;
+		printk("usbhs: state (IRQ did not fire)= %x, d0-mux=%x\n\n",
+							omap_ehci_hcd->state,
+							omap_readl(USBB2_ULPIPHY_DAT0));
+		return;
+	} else
+		printk("usbhs: L2: IO pad wake [disable] hcd->state = %x, d0-mux=%x\n\n",
+							omap_ehci_hcd->state,
+							omap_readl(USBB2_ULPIPHY_DAT0));
+	pm_runtime_put_sync(usbhs_wake->dev);
 }
 
 void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
@@ -931,6 +1033,8 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 	}
 
 	INIT_WORK(&usbhs_wake->wakeup_work, usbhs_resume_work);
+	INIT_DELAYED_WORK(&usbhs_wake->wakeup_work_post_phy_wake,
+				usbhs_resume_work_post_phy_wake);
 	usbhs_wake->oh_ehci = oh[2];
 	usbhs_wake->oh_ohci = oh[1];
 	usbhs_wake->dev = &od->pdev.dev;

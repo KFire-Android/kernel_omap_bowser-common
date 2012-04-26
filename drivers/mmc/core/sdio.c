@@ -118,7 +118,14 @@ static int sdio_read_cccr(struct mmc_card *card)
 	if (cccr_vsn > SDIO_CCCR_REV_2_00) {
 		printk(KERN_ERR "%s: unrecognised CCCR structure version %d\n",
 			mmc_hostname(card->host), cccr_vsn);
+#ifdef CONFIG_TIWLAN_SDIO
 		return -EINVAL;
+#else
+               /* support for the BCM43239 which supports up to v3 and kernel supports v1.2 */
+                cccr_vsn = SDIO_CCCR_REV_1_20;
+                printk(KERN_ERR "%s: Reverting CCCR structure version to %d\n",
+                                        mmc_hostname(card->host), cccr_vsn);
+#endif
 	}
 
 	card->cccr.sdio_vsn = (data & 0xf0) >> 4;

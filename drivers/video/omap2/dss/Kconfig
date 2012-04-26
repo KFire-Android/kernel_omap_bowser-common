@@ -69,6 +69,18 @@ config OMAP4_DSS_HDMI
 	  HDMI Interface. This adds the High Definition Multimedia Interface.
 	  See http://www.hdmi.org/ for HDMI specification.
 
+config HDMI_CERT_DEBUG
+	bool "HDMI certification support"
+	depends on OMAP4_DSS_HDMI
+	default n
+	help
+	  It can be used to force HDMI output resolutions
+
+	  Provides capabilities to change HDMI configuration via sysfs entries.
+	  To be used only for debugging purposes.
+	  e.g.
+	  echo "CEA-1+hpd" > /sys/devices/platform/omapdss/display1/hdmi_timings
+
 config OMAP2_DSS_SDI
 	bool "SDI support"
 	depends on ARCH_OMAP3

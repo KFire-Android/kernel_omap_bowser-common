@@ -583,9 +583,10 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 			return ERR_RETRY;
 		}
 
-		/* Otherwise abort the command */
-		pr_err("%s: not retrying timeout\n", req->rq_disk->disk_name);
-		return ERR_ABORT;
+		/* TTX-4176: Retry the command */
+		pr_err("%s: retrying due to timeout\n",
+				req->rq_disk->disk_name);
+		return ERR_RETRY;
 
 	default:
 		/* We don't understand the error code the driver gave us */
@@ -646,16 +647,24 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 	if (R1_CURRENT_STATE(status) == R1_STATE_DATA ||
 	    R1_CURRENT_STATE(status) == R1_STATE_RCV) {
 		err = send_stop(card, &stop_status);
-		if (err)
+		if (err){
 			pr_err("%s: error %d sending stop command\n",
 			       req->rq_disk->disk_name, err);
-
-		/*
-		 * If the stop cmd also timed out, the card is probably
-		 * not present, so abort.  Other errors are bad news too.
-		 */
-		if (err)
+			/* stop command could have failed because, card was
+			 * already in tran state */
+			err = get_card_status(card, &status, 0);
+			if (err) {
+				pr_err("%s: error %d sending card status after"
+					       " stop command\n",
+					       req->rq_disk->disk_name, err);
+				return ERR_ABORT;
+			}
+			if (R1_CURRENT_STATE(status) ==  R1_STATE_TRAN
+				|| R1_CURRENT_STATE(status) == R1_STATE_PRG) {
+				return ERR_RETRY;
+			}
 			return ERR_ABORT;
+		}
 	}
 
 	/* Check for set block count errors */
@@ -680,6 +689,17 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 	if (stop_status) {
 		brq->stop.resp[0] = stop_status;
 		brq->stop.error = 0;
+	}
+
+	err = get_card_status(card, &status, 0);
+	if (err) {
+		pr_err("%s: error %d sending card status for retry\n",
+		       req->rq_disk->disk_name, err);
+		return ERR_ABORT;
+	}
+	if (R1_CURRENT_STATE(status) ==  R1_STATE_TRAN
+		|| R1_CURRENT_STATE(status) == R1_STATE_PRG) {
+		return ERR_RETRY;
 	}
 	return ERR_CONTINUE;
 }
@@ -966,8 +986,34 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		if (brq.sbc.error || brq.cmd.error || brq.stop.error) {
 			switch (mmc_blk_cmd_recovery(card, req, &brq)) {
 			case ERR_RETRY:
-				if (retry++ < 5)
+				if (retry++ < 5) {
+					/*
+					 * Everything else is either success, or a data error of some
+					 * kind.  If it was a write, we may have transitioned to
+					 * program mode, which we have to wait for it to complete.
+					 */
+					if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {
+						u32 status;
+						do {
+							int err = get_card_status(card, &status, 5);
+							if (err) {
+								printk(KERN_ERR "%s: error %d requesting status\n",
+									   req->rq_disk->disk_name, err);
+								goto cmd_err;
+							}
+							/*
+							 * Some cards mishandle the status bits,
+							 * so make sure to check both the busy
+							 * indication and the card state.
+							 */
+						} while (!(status & R1_READY_FOR_DATA) ||
+							 (R1_CURRENT_STATE(status) == R1_STATE_PRG));
+					}
 					continue;
+				}
+				pr_err("%s: retry count = %d\n", req->rq_disk->disk_name, retry);
+				if (retry < 8)
+					break;
 			case ERR_ABORT:
 				goto cmd_abort;
 			case ERR_CONTINUE:

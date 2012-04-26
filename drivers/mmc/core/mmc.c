@@ -22,6 +22,8 @@
 #include "mmc_ops.h"
 #include "sd_ops.h"
 
+#include <linux/proc_fs.h>
+
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
@@ -40,6 +42,30 @@ static const unsigned int tacc_mant[] = {
 	0,	10,	12,	13,	15,	20,	25,	30,
 	35,	40,	45,	50,	55,	60,	70,	80,
 };
+
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+static char emmcinfo_brand[32+1] = {'\0'};
+static unsigned emmcinfo_size;
+static int parse_manuf_id(unsigned int id, char *name);
+
+#define ID2NAME(ID,NAME)  {(unsigned int)(ID), (char*)(NAME)}
+
+typedef struct
+{
+	unsigned int manuf_id;
+	char *manuf_name;
+}manuf_id_name_map;
+
+manuf_id_name_map manuf_id_map_table[] =
+{
+	ID2NAME(0x11, "Toshiba"),
+	ID2NAME(0x15, "Samsung"),
+	ID2NAME(0x45, "Sandisk"),
+	ID2NAME(0x90, "Hynix"),
+	ID2NAME(0xFE, "Micron"),
+};
+#endif
+
 
 #define UNSTUFF_BITS(resp,start,size)					\
 	({								\
@@ -82,6 +108,10 @@ static int mmc_decode_cid(struct mmc_card *card)
 		card->cid.serial	= UNSTUFF_BITS(resp, 16, 24);
 		card->cid.month		= UNSTUFF_BITS(resp, 12, 4);
 		card->cid.year		= UNSTUFF_BITS(resp, 8, 4) + 1997;
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+		if(parse_manuf_id(card->cid.manfid, emmcinfo_brand) == 0)
+			strcpy(emmcinfo_brand, "Unknown device");
+#endif
 		break;
 
 	case 2: /* MMC v2.0 - v2.2 */
@@ -98,6 +128,10 @@ static int mmc_decode_cid(struct mmc_card *card)
 		card->cid.serial	= UNSTUFF_BITS(resp, 16, 32);
 		card->cid.month		= UNSTUFF_BITS(resp, 12, 4);
 		card->cid.year		= UNSTUFF_BITS(resp, 8, 4) + 1997;
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+		if(parse_manuf_id(card->cid.manfid, emmcinfo_brand) == 0)
+			strcpy(emmcinfo_brand, "Unknown device");
+#endif
 		break;
 
 	default:
@@ -259,7 +293,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
-	if (card->ext_csd.rev > 5) {
+	if (card->ext_csd.rev > 6) {
 		printk(KERN_ERR "%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
@@ -281,6 +315,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		if (card->ext_csd.sectors > (2u * 1024 * 1024 * 1024) / 512)
 			mmc_card_set_blockaddr(card);
 	}
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+	emmcinfo_size = card->ext_csd.sectors;
+#endif
 	card->ext_csd.raw_card_type = ext_csd[EXT_CSD_CARD_TYPE];
 	switch (ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_MASK) {
 	case EXT_CSD_CARD_TYPE_DDR_52 | EXT_CSD_CARD_TYPE_52 |
@@ -954,6 +991,10 @@ static int mmc_sleep(struct mmc_host *host)
 	struct mmc_card *card = host->card;
 	int err = -ENOSYS;
 
+	//If Manufacturer ID is Samsung (0x15), bypass Sleep command transmission as Samsung EMMC goes automatically in sleep mode (HW feature) 
+        if(card->cid.manfid == 0x15)
+        return 0;
+
 	if (card && card->ext_csd.rev >= 3) {
 		err = mmc_card_sleepawake(host, 1);
 		if (err < 0)
@@ -968,6 +1009,10 @@ static int mmc_awake(struct mmc_host *host)
 {
 	struct mmc_card *card = host->card;
 	int err = -ENOSYS;
+
+	//If Manufacturer ID is Samsung (0x15), bypass Sleep command transmission as Samsung EMMC goes automatically in awake mode(HW feature)  
+        if(card->cid.manfid == 0x15)
+        return 0;
 
 	if (card && card->ext_csd.rev >= 3) {
 		err = mmc_card_sleepawake(host, 0);
@@ -1087,3 +1132,82 @@ err:
 
 	return err;
 }
+
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+static int parse_manuf_id(unsigned int id, char *name)
+{
+	int match = 0;
+	int i;
+
+	for(i = 0 ; i < sizeof(manuf_id_map_table)/sizeof(manuf_id_name_map); i++)
+	{
+		if(manuf_id_map_table[i].manuf_id == id)
+		{
+			match = 1;
+			strcpy(name, manuf_id_map_table[i].manuf_name);
+			break;
+		}
+	}
+	return match;
+}
+
+
+static int proc_emmcinfo_read(char *page, char **start, off_t off, int count,
+				int *eof, void *data)
+{
+	unsigned int gBytes;
+	unsigned long long real;
+	real = (unsigned long long)emmcinfo_size * (unsigned long long)512;
+	gBytes = emmcinfo_size/(2 << 20);
+	if(gBytes <= 16)
+		gBytes = 16;
+	else if(gBytes > 16 && gBytes <= 32)
+		gBytes = 32;
+	else if(gBytes > 32)
+		gBytes = 64;
+
+	// emmcinfo_size: # of sectors
+	sprintf(page, "%s %uG (real: %llu bytes)\n", emmcinfo_brand, gBytes, real);
+	return strlen(page);
+}
+
+static int proc_emmcsize_read(char *page, char **start, off_t off, int count,
+				int *eof, void *data)
+{
+	unsigned int gBytes;
+	unsigned long long real;
+	real = (unsigned long long)emmcinfo_size * (unsigned long long)512;
+	gBytes = emmcinfo_size/(2 << 20);
+	if(gBytes <= 16)
+		gBytes = 16;
+	else if(gBytes > 16 && gBytes <= 32)
+		gBytes = 32;
+	else if(gBytes > 32)
+		gBytes = 64;
+
+	// emmcinfo_size: # of sectors
+	sprintf(page, "%uG\n", gBytes);
+	return strlen(page);
+}
+
+static int __init emmcinfo_init_proc(void)
+{
+	struct proc_dir_entry *proc_emmcinfo = create_proc_entry("emmcinfo", S_IRUGO, NULL);
+	struct proc_dir_entry *proc_emmcsize = create_proc_entry("emmcsize", S_IRUGO, NULL);
+
+	if (proc_emmcinfo != NULL) {
+		proc_emmcinfo->data = NULL;
+		proc_emmcinfo->read_proc = proc_emmcinfo_read;
+		proc_emmcinfo->write_proc = NULL;
+	}
+
+	if(proc_emmcsize != NULL) {
+		proc_emmcsize->data = NULL;
+		proc_emmcsize->read_proc = proc_emmcsize_read;
+		proc_emmcsize->write_proc = NULL;
+	}
+
+	return 0;
+}
+late_initcall(emmcinfo_init_proc);
+#endif

@@ -1051,6 +1051,16 @@ static const struct snd_kcontrol_new mm_ext_dl_switch_controls =
 	SOC_SINGLE_EXT("Switch", ABE_VIRTUAL_SWITCH, MIX_SWITCH_MM_EXT_DL, 1, 0,
 			abe_get_mixer, abe_put_switch);
 
+/* Virtual MM_EXT_UL Switch */
+static const struct snd_kcontrol_new mm_ext_ul_switch_controls =
+	SOC_SINGLE_EXT("Switch", ABE_VIRTUAL_SWITCH, MIX_SWITCH_MM_EXT_UL, 1, 0,
+			abe_get_mixer, abe_put_switch);
+
+/* Virtual VIB_DL Switch */
+static const struct snd_kcontrol_new vid_dl_switch_controls =
+	SOC_SINGLE_EXT("Switch", ABE_VIRTUAL_SWITCH, MIX_SWITCH_VIB_DL, 1, 0,
+			abe_get_mixer, abe_put_switch);
+
 static const struct snd_kcontrol_new abe_controls[] = {
 	/* DL1 mixer gains */
 	SOC_SINGLE_EXT_TLV("DL1 Media Playback Volume",
@@ -1183,9 +1193,9 @@ static const struct snd_soc_dapm_widget abe_dapm_widgets[] = {
 			W_AIF_BT_VX_UL, ABE_OPP_50, 0),
 	SND_SOC_DAPM_AIF_OUT("BT_VX_DL", "BT Playback", 0,
 			W_AIF_BT_VX_DL, ABE_OPP_50, 0),
-	SND_SOC_DAPM_AIF_IN("MM_EXT_UL", "FM Capture", 0,
+	SND_SOC_DAPM_AIF_IN("MM_EXT_UL", "PCM Capture", 0,
 			W_AIF_MM_EXT_UL, ABE_OPP_50, 0),
-	SND_SOC_DAPM_AIF_OUT("MM_EXT_DL", "FM Playback", 0,
+	SND_SOC_DAPM_AIF_OUT("MM_EXT_DL", "PCM Playback", 0,
 			W_AIF_MM_EXT_DL, ABE_OPP_25, 0),
 	SND_SOC_DAPM_AIF_IN("DMIC0", "DMIC0 Capture", 0,
 			W_AIF_DMIC0, ABE_OPP_50, 0),
@@ -1263,6 +1273,14 @@ static const struct snd_soc_dapm_widget abe_dapm_widgets[] = {
 	/* Virtual MM_EXT_DL Switch TODO: confrm OPP level here */
 	SND_SOC_DAPM_MIXER("DL1 MM_EXT",
 			W_VSWITCH_DL1_MM_EXT, ABE_OPP_50, 0, &mm_ext_dl_switch_controls, 1),
+
+	/* Virtual MM_EXT_UL Switch */
+	SND_SOC_DAPM_MIXER("AMIC_UL MM_EXT",
+			W_VSWITCH_DL1_MM_EXT, ABE_OPP_50, 0, &mm_ext_ul_switch_controls, 1),
+
+	/* Virtual VIB_DL Switch */
+	SND_SOC_DAPM_MIXER("VIB_DL_VIRT",
+			W_VSWITCH_VIB_DL, ABE_OPP_50, 0, &vid_dl_switch_controls, 1),
 
 	/* Virtuals to join our capture sources */
 	SND_SOC_DAPM_MIXER("Sidetone Capture VMixer", SND_SOC_NOPM, 0, 0, NULL, 0),
@@ -1542,7 +1560,8 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"VX UL VMixer", NULL, "Voice Capture Mixer"},
 
 	/* Vibra */
-	{"PDM_VIB", NULL, "VIB_DL"},
+	{"PDM_VIB", NULL, "VIB_DL_VIRT"},
+	{"VIB_DL_VIRT", "Switch", "VIB_DL"},
 
 	/* VX and MODEM */
 	{"VX_UL", NULL, "VX UL VMixer"},
@@ -1562,6 +1581,9 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"DMIC0", NULL, "BE_IN"},
 	{"DMIC1", NULL, "BE_IN"},
 	{"DMIC2", NULL, "BE_IN"},
+	/* Capture Input Selection for AMIC_UL  */
+	{"AMIC_UL MM_EXT", "Switch", "MM_EXT_UL"},
+	{"AMIC_UL", NULL, "AMIC_UL MM_EXT"},
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -1863,7 +1885,7 @@ static const struct snd_pcm_hardware omap_abe_hardware = {
 				  SNDRV_PCM_INFO_RESUME,
 	.formats		= SNDRV_PCM_FMTBIT_S16_LE |
 				  SNDRV_PCM_FMTBIT_S32_LE,
-	.period_bytes_min	= 4 * 1024,
+	.period_bytes_min	= 2 * 1024,
 	.period_bytes_max	= 24 * 1024,
 	.periods_min		= 4,
 	.periods_max		= 4,
@@ -2205,6 +2227,7 @@ static int aess_open(struct snd_pcm_substream *substream)
 	if (!abe->active++) {
 		abe->opp = 0;
 		aess_restore_context(abe);
+		abe_set_opp_mode(abe, 100);
 		abe_wakeup();
 	}
 
@@ -2247,6 +2270,11 @@ static int aess_hw_params(struct snd_pcm_substream *substream,
 	abe->ping_pong_substream = substream;
 
 	format.f = params_rate(params);
+	if(format.f == 44100) {
+		dev_dbg(dai->dev, "%s: %s - set event generator at 44.1kHz\n",
+		__func__, dai->name);
+		abe_write_event_generator(EVENT_44100);
+	}
 	if (params_format(params) == SNDRV_PCM_FORMAT_S32_LE)
 		format.samp_format = STEREO_MSB;
 	else
@@ -2677,8 +2705,13 @@ static int abe_probe(struct snd_soc_platform *platform)
 		fw_data + sizeof(struct fw_header) + abe->hdr.coeff_size,
 		abe->hdr.firmware_size);
 
-	ret = request_threaded_irq(abe->irq, NULL, abe_irq_handler,
+	/*ret = request_threaded_irq(abe->irq, NULL, abe_irq_handler,
 				IRQF_ONESHOT, "ABE", (void *)abe);
+	Change IRQ from threaded to hard irq to avoid scheduling
+	issues of threaded irq*/
+
+	ret = request_irq(abe->irq, abe_irq_handler,
+				0, "ABE", (void *)abe);
 	if (ret) {
 		dev_err(platform->dev, "request for ABE IRQ %d failed %d\n",
 				abe->irq, ret);
@@ -2725,7 +2758,11 @@ static int abe_probe(struct snd_soc_platform *platform)
 	abe_load_fw(abe->firmware);
 
 	/* "tick" of the audio engine */
+#ifdef CONFIG_ABE_44100
+	abe_write_event_generator(EVENT_44100);
+#else
 	abe_write_event_generator(EVENT_TIMER);
+#endif
 
 	abe_dsp_init_gains(abe);
 

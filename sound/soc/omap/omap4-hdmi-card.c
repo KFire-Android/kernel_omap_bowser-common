@@ -26,6 +26,7 @@
 #include <sound/soc.h>
 #include <asm/mach-types.h>
 #include <video/omapdss.h>
+#include <video/hdmi_ti_4xxx_ip.h>
 
 #define DRV_NAME "omap4-hdmi-audio"
 
@@ -51,8 +52,8 @@ static int omap4_hdmi_dai_hw_params(struct snd_pcm_substream *substream,
 
 	/* Make sure HDMI is power-on to avoid L3 interconnect errors */
 	while (mgr->device->state != OMAP_DSS_DISPLAY_ACTIVE) {
-		msleep(50);
-		if (count > 5)
+		msleep(OMAP_HDMI_TIME_TO_RETRY / 10);
+		if (count > 10)
 			return -EIO;
 		dev_err(dev, "HDMI display is not active!\n");
 		count++;

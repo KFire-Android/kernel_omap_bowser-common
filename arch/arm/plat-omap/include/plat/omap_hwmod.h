@@ -616,6 +616,7 @@ int omap_hwmod_get_context_loss_count(struct omap_hwmod *oh);
 int omap_hwmod_no_setup_reset(struct omap_hwmod *oh);
 
 int omap_hwmod_pad_get_wakeup_status(struct omap_hwmod *oh);
+bool omap_hwmod_pad_is_ioring_enabled(struct omap_hwmod *oh);
 
 int omap_hwmod_disable_ioring_wakeup(struct omap_hwmod *oh);
 int omap_hwmod_enable_ioring_wakeup(struct omap_hwmod *oh);

@@ -1521,6 +1521,28 @@ int mmc_erase(struct mmc_card *card, unsigned int from, unsigned int nr,
 		if (rem)
 			nr -= rem;
 	}
+#define QUIRKY_SAMSUNG_EMMC_MOVE_TO_QUIRKS
+#ifdef QUIRKY_SAMSUNG_EMMC_MOVE_TO_QUIRKS
+#define SAMSUNG_TRIM_ALIGN (8192 / 512)
+	if (arg == MMC_SECURE_TRIM1_ARG || arg == MMC_SECURE_TRIM2_ARG) {
+		if (from % SAMSUNG_TRIM_ALIGN || nr % SAMSUNG_TRIM_ALIGN)
+			return -EINVAL;
+	}
+	if (arg & MMC_TRIM_ARGS) {
+		rem = from % SAMSUNG_TRIM_ALIGN;
+		if (rem) {
+			rem = SAMSUNG_TRIM_ALIGN - rem;
+			from += rem;
+			if (nr > rem)
+				nr -= rem;
+			else
+				return 0;
+		}
+		rem = nr % SAMSUNG_TRIM_ALIGN;
+		if (rem)
+			nr -= rem;
+	}
+#endif
 
 	if (nr == 0)
 		return 0;

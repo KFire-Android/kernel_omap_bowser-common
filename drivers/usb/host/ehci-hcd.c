@@ -305,6 +305,8 @@ static int ehci_reset (struct ehci_hcd *ehci)
 static void ehci_quiesce (struct ehci_hcd *ehci)
 {
 	u32	temp;
+	u8	counter;
+	int     status;
 
 #ifdef DEBUG
 	if (!HC_IS_RUNNING (ehci_to_hcd(ehci)->state))
@@ -314,18 +316,39 @@ static void ehci_quiesce (struct ehci_hcd *ehci)
 	/* wait for any schedule enables/disables to take effect */
 	temp = ehci_readl(ehci, &ehci->regs->command) << 10;
 	temp &= STS_ASS | STS_PSS;
-	if (handshake_on_error_set_halt(ehci, &ehci->regs->status,
-					STS_ASS | STS_PSS, temp, 16 * 125))
-		return;
+	counter = 1;
+again1:
+	status = handshake(ehci, &ehci->regs->status,
+			STS_ASS | STS_PSS, temp, 125);
+	if (status) {
+		if (counter++ <= 16)
+			goto again1;
+	}
+	if (counter > 16)
+		printk("%s: EHCI status1=%x sync count=%d microframes\n",
+				__func__,
+		       ehci_readl(ehci, &ehci->regs->status),
+				counter);
 
 	/* then disable anything that's still active */
 	temp = ehci_readl(ehci, &ehci->regs->command);
 	temp &= ~(CMD_ASE | CMD_IAAD | CMD_PSE);
 	ehci_writel(ehci, temp, &ehci->regs->command);
 
+	counter = 1;
+again2:
 	/* hardware can take 16 microframes to turn off ... */
-	handshake_on_error_set_halt(ehci, &ehci->regs->status,
-				    STS_ASS | STS_PSS, 0, 16 * 125);
+	status = handshake(ehci, &ehci->regs->status,
+		    STS_ASS | STS_PSS, 0, 125);
+	if (status) {
+		if (counter++ <= 16)
+			goto again2;
+	}
+	if (counter > 16)
+		printk("%s: EHCI status2=%x sync count=%d microframes\n",
+				__func__,
+		       ehci_readl(ehci, &ehci->regs->status),
+				counter);
 }
 
 /*-------------------------------------------------------------------------*/

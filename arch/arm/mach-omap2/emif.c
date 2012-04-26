@@ -31,6 +31,13 @@
 
 #include "voltage.h"
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+#include <linux/proc_fs.h>
+#define  SAMSUNG_SDRAM 		0x1
+#define  ELPIDA_SDRAM  		0x3
+#define  HYNIX_SDRAM		0x6
+#endif
+
 /* Utility macro for masking and setting a field in a register/variable */
 #define mask_n_set(reg, shift, msk, val) \
 	(reg) = (((reg) & ~(msk))|(((val) << (shift)) & msk))
@@ -403,7 +410,8 @@ static u32 get_sdram_tim_3_reg(const struct lpddr2_timings *timings,
 	mask_n_set(tim3, OMAP44XX_REG_T_RFC_SHIFT, OMAP44XX_REG_T_RFC_MASK,
 		   val);
 
-	val = ns_x2_2_cycles(timings->tDQSCKMAXx2) - 1;
+	/* Christophe is using tDQSCKMAX + 1 in his table */
+	val = ns_x2_2_cycles(timings->tDQSCKMAXx2 + 2) - 1;
 	mask_n_set(tim3, OMAP44XX_REG_T_TDQSCKMAX_SHIFT,
 		   OMAP44XX_REG_T_TDQSCKMAX_MASK, val);
 
@@ -1498,6 +1506,41 @@ static void __init setup_lowpower_regs(u32 emif_nr,
 		set_lp_mode(emif_nr, LP_MODE_DISABLE);
 	}
 }
+/*
+ * omap_sdram_vendor - identify ddr vendor
+ * Identify DDR vendor ID for selecting correct timing parameter 
+ * for dynamic ddr detection.
+ */
+int omap_sdram_vendor(void)
+{
+	int ddr_manufact_id =0; 	
+	void __iomem *base;
+
+	base = emif[EMIF1].base;
+
+	__raw_writel(LPDDR2_MR5, base + OMAP44XX_EMIF_LPDDR2_MODE_REG_CFG);
+	ddr_manufact_id =  __raw_readb(base  +  OMAP44XX_EMIF_LPDDR2_MODE_REG_DATA);
+
+	return ddr_manufact_id ;
+}
+/*
+ * omap_sdram_density - identify ddr density
+ * Identify DDR density for selecting correct timing parameter
+ * for dynamic ddr detection.
+ */
+int omap_sdram_density(void)
+{
+	int ddr_density =0;
+	void __iomem *base;
+
+	base = emif[EMIF1].base;
+
+	__raw_writel(LPDDR2_MR8, base + OMAP44XX_EMIF_LPDDR2_MODE_REG_CFG);
+	ddr_density =  __raw_readb(base  +  OMAP44XX_EMIF_LPDDR2_MODE_REG_DATA);
+
+	return ddr_density;
+}
+
 
 /*
  * omap_init_emif_timings - reprogram EMIF timing parameters
@@ -1549,3 +1592,42 @@ static int __init omap_init_emif_timings(void)
 	return ret;
 }
 late_initcall(omap_init_emif_timings);
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+static int proc_draminfo_read(char *page, char **start, off_t off, int count,
+                                int *eof, void *data)
+{
+	int sd_vendor = omap_sdram_vendor();
+
+	if(sd_vendor == SAMSUNG_SDRAM)
+	{
+		sprintf(page, "Samsung\n");
+	}
+	else if(sd_vendor == ELPIDA_SDRAM)
+	{
+		sprintf(page, "Elpida\n");
+	}
+	else if(sd_vendor == HYNIX_SDRAM)
+	{
+		sprintf(page, "Hynix\n");
+	}
+	else
+	{
+		sprintf(page, "Unknown device\n");
+	}
+	return strlen(page);
+}
+
+static int __init draminfo_init_proc(void)
+{
+	struct proc_dir_entry *proc_draminfo = create_proc_entry("draminfo", S_IRUGO, NULL);
+
+	if (proc_draminfo != NULL) {
+		proc_draminfo->data = NULL;
+		proc_draminfo->read_proc = proc_draminfo_read;
+		proc_draminfo->write_proc = NULL;
+        }
+
+	return 0;
+}
+late_initcall(draminfo_init_proc);
+#endif

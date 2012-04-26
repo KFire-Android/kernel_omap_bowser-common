@@ -24,6 +24,7 @@
  */
 
 #include <sound/core.h>
+#include <linux/switch.h>
 
 struct input_dev;
 
@@ -53,6 +54,8 @@ enum snd_jack_types {
 };
 
 struct snd_jack {
+	struct switch_dev sdev;
+	int sstatus;
 	struct input_dev *input_dev;
 	int registered;
 	int type;

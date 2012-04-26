@@ -9,3 +9,11 @@ config OMAP_DIE_GOVERNOR
 	  This is the governor for the OMAP4 On-Die temperature sensor.
 	  This governer will institute the policy to call specific
 	  cooling agents.
+
+config CASE_TEMP_GOVERNOR
+	bool "Case thermal governor support"
+	depends on THERMAL_FRAMEWORK && OMAP_THERMAL
+	help
+	  This is the governor for the Case temperature sensor.
+	  This governer will institute the policy to call specific
+	  cooling agents.

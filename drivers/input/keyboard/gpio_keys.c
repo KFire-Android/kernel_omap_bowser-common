@@ -453,6 +453,17 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 	struct input_dev *input;
 	int i, error;
 	int wakeup = 0;
+/*SW5, Anvoi, 20111215, Config key VolumeUp/VolumeDown{*/
+    void __iomem *phymux_base = NULL;
+    /* Config GPIO_WK1 as GPIO_1 */
+    phymux_base = ioremap(0x4A100000, 0x1000);
+    __raw_writel(0x15700000, phymux_base + 0x600);
+    iounmap(phymux_base);
+
+    phymux_base = ioremap(0x4A31E000, 0x1000);
+    __raw_writel(0x10000000, phymux_base + 0x600);
+    iounmap(phymux_base);
+/*SW5, Anvoi, 20111215, Config key VolumeUp/VolumeDown}*/   
 
 	ddata = kzalloc(sizeof(struct gpio_keys_drvdata) +
 			pdata->nbuttons * sizeof(struct gpio_button_data),

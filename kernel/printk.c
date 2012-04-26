@@ -41,6 +41,7 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/rculist.h>
+#include <linux/time.h>
 
 #include <asm/uaccess.h>
 
@@ -50,6 +51,8 @@
 void asmlinkage __attribute__((weak)) early_printk(const char *fmt, ...)
 {
 }
+
+extern void read_persistent_clock(struct timespec *ts);
 
 #define __LOG_BUF_LEN	(1 << CONFIG_LOG_BUF_SHIFT)
 
@@ -979,9 +982,12 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 				unsigned tlen;
 				unsigned long long t;
 				unsigned long nanosec_rem;
+				struct timespec ts;
 
-				t = cpu_clock(printk_cpu);
-				nanosec_rem = do_div(t, 1000000000);
+				read_persistent_clock(&ts);
+				t = ts.tv_sec;
+				nanosec_rem = ts.tv_nsec;
+
 				tlen = sprintf(tbuf, "[%5lu.%06lu] ",
 						(unsigned long) t,
 						nanosec_rem / 1000);

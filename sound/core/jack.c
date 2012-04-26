@@ -46,6 +46,8 @@ static int snd_jack_dev_free(struct snd_device *device)
 	else
 		input_free_device(jack->input_dev);
 
+	switch_dev_unregister(&jack->sdev);
+
 	kfree(jack->id);
 	kfree(jack);
 
@@ -79,10 +81,22 @@ static int snd_jack_dev_register(struct snd_device *device)
 		input_set_capability(jack->input_dev, EV_KEY, jack->key[i]);
 	}
 
-	err = input_register_device(jack->input_dev);
-	if (err == 0)
-		jack->registered = 1;
+	/* Android custom switch API */
+	jack->sdev.name = jack->id;
+	err = switch_dev_register(&jack->sdev);
+	if (err != 0)
+		return err;
 
+	err = input_register_device(jack->input_dev);
+	if (err != 0)
+		goto err_switch;
+
+	jack->registered = 1;
+
+	return 0;
+
+err_switch:
+	switch_dev_unregister(&jack->sdev);
 	return err;
 }
 
@@ -126,10 +140,19 @@ int snd_jack_new(struct snd_card *card, const char *id, int type,
 
 	jack->type = type;
 
-	for (i = 0; i < ARRAY_SIZE(jack_switch_types); i++)
-		if (type & (1 << i))
-			input_set_capability(jack->input_dev, EV_SW,
-					     jack_switch_types[i]);
+	for (i = 0; i < ARRAY_SIZE(jack_switch_types); i++) {
+		switch (i) {
+		case SND_JACK_MICROPHONE:
+		case SND_JACK_HEADPHONE:
+			/* Exclude from the input layer for Android */
+			break;
+		default:
+			if (type & (1 << i))
+				input_set_capability(jack->input_dev, EV_SW,
+						     jack_switch_types[i]);
+			break;
+		}
+	}
 
 	err = snd_device_new(card, SNDRV_DEV_JACK, jack, &ops);
 	if (err < 0)
@@ -214,6 +237,25 @@ void snd_jack_report(struct snd_jack *jack, int status)
 
 	if (!jack)
 		return;
+
+	/* This is Android, headset information goes separately */
+	switch (status & SND_JACK_HEADSET) {
+	case SND_JACK_HEADSET:
+	case SND_JACK_MICROPHONE:
+		jack->sstatus = 1;
+		break;
+	case SND_JACK_HEADPHONE:
+		jack->sstatus = 2;
+		break;
+	default:
+		jack->sstatus = 0;
+		break;
+	}
+	if (jack->registered){
+		switch_set_state(&jack->sdev, jack->sstatus);
+	}
+
+	status &= ~SND_JACK_HEADSET;
 
 	for (i = 0; i < ARRAY_SIZE(jack->key); i++) {
 		int testbit = SND_JACK_BTN_0 >> i;

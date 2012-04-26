@@ -66,6 +66,7 @@ static __initdata struct twl6030_resource_map twl6030_res_map[] = {
 	TWL6030_RES_DATA(RES_VDD2, "CORE2", 0x58, DEV_GRP_P1),
 	TWL6030_RES_DATA(RES_VDD3, "CORE3", 0x5e, DEV_GRP_P1),
 	TWL6030_RES_DATA(RES_VMEM, "VMEM", 0x64, DEV_GRP_P1),
+	{.res_id = RES_VMEM,.name = "VMEM",.base_addr = 0x64,.group = DEV_GRP_NULL,},
 	/* VANA cannot be modified */
 	TWL6030_RES_DATA(RES_VUAX1, "VUAX1", 0x84, DEV_GRP_P1),
 	TWL6030_RES_DATA(RES_VAUX2, "VAUX2", 0x88, DEV_GRP_P1),
