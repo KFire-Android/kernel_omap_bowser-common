@@ -201,8 +201,8 @@ static struct omap_dss_device tablet_lcd_device = {
 			.vsw		= 4,
 			.vbp		= 4,
 		},
-		.width_in_um = 210300,
-		.height_in_um = 147600,
+		.width_in_um = 217000,
+		.height_in_um = 135600,
 	},
 
 	.ctrl = {
