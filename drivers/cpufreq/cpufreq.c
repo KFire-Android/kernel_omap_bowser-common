@@ -606,7 +606,6 @@ static ssize_t store_boost_cpufreq(struct cpufreq_policy *policy,
 	return count;
 }
 
-
 /**
  * show_scaling_driver - show the current cpufreq HW/BIOS limitation
  */
