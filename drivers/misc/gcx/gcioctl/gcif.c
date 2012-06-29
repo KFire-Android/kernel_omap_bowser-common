@@ -813,7 +813,6 @@ exit:
 	return ret;
 }
 
-
 /*******************************************************************************
  * Device definitions/operations.
  */
@@ -895,26 +894,7 @@ static const struct file_operations dev_operations = {
 /*******************************************************************************
  * Device init/cleanup.
  */
-
-static int mod_init(void);
 static void mod_exit(void);
-
-static struct platform_driver gcx_drv = {
-	.probe = 0,
-	.driver = {
-		.owner = THIS_MODULE,
-		.name = "gcx",
-	},
-};
-
-static const char *gcx_version = VER_FILEVERSION_STR;
-
-static ssize_t show_version(struct device_driver *driver, char *buf)
-{
-	return scnprintf(buf, PAGE_SIZE, "%s\n", gcx_version);
-}
-
-static DRIVER_ATTR(version, 0444, show_version, NULL);
 
 static int mod_init(void)
 {
