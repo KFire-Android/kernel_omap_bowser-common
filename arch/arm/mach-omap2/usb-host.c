@@ -835,15 +835,15 @@ void usbhs_wakeup()
 
 	if (test_bit(USB_OHCI_LOADED, &usb_hcds_loaded) &&
 	    (omap_hwmod_pad_is_ioring_enabled(usbhs_wake->oh_ohci) == true) &&
-	    omap_hwmod_pad_get_wakeup_status(usbhs_wake->oh_ohci) == true) {
-		usbhs_wake->wakeup_ohci = 1;
+	    (omap_hwmod_pad_get_wakeup_status(usbhs_wake->oh_ohci) == true)) {
+		omap_hwmod_disable_ioring_wakeup(usbhs_wake->oh_ohci);
 		workq = 1;
 	}
 
 	if (test_bit(USB_EHCI_LOADED, &usb_hcds_loaded) &&
 	    (omap_hwmod_pad_is_ioring_enabled(usbhs_wake->oh_ehci) == true) &&
-	    omap_hwmod_pad_get_wakeup_status(usbhs_wake->oh_ehci) == true) {
-		usbhs_wake->wakeup_ehci = 1;
+	    (omap_hwmod_pad_get_wakeup_status(usbhs_wake->oh_ehci) == true)) {
+		omap_hwmod_disable_ioring_wakeup(usbhs_wake->oh_ehci);
 		workq = 1;
 	}
 
@@ -1026,7 +1026,7 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 		return;
 	}
 
-	usbhs_wake = kmalloc(sizeof(*usbhs_wake), GFP_KERNEL);
+	usbhs_wake = kzalloc(sizeof(*usbhs_wake), GFP_KERNEL);
 	if (!usbhs_wake) {
 		pr_err("Could not allocate usbhs_wake\n");
 		return;
