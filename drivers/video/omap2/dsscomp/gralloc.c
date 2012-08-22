@@ -280,7 +280,7 @@ static void dsscomp_gralloc_do_clone(struct work_struct *work)
 	kfree(wk);
 }
 
-static bool dsscomp_is_any_device_active()
+static bool dsscomp_is_any_device_active(void)
 {
 	struct omap_dss_device *dssdev;
 	u32 display_ix;
