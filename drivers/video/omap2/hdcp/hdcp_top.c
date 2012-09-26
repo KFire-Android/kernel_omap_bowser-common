@@ -245,9 +245,7 @@ static void hdcp_wq_authentication_failure(void)
 	hdcp_lib_set_av_mute(AV_MUTE_SET);
 	hdcp_lib_set_encryption(HDCP_ENC_OFF);
 
-	hdcp_cancel_work(&hdcp.pending_wq_event);
-
-	hdcp.pending_disable = 0;
+	hdcp_wq_disable();
 
 	if (hdcp.retry_cnt && (hdcp.hdmi_state != HDMI_STOPPED)) {
 		if (hdcp.retry_cnt < HDCP_INFINITE_REAUTH) {
@@ -566,6 +564,12 @@ static void hdcp_irq_cb(int status)
 						 * work */
 		hdcp.hpd_low = 0;		/* Used to cancel HDCP works */
 		hdcp_lib_disable(AV_MUTE_CLEAR);
+		if (hdcp.pending_start) {
+			pr_err("cancelling work for pending start\n");
+			hdcp_cancel_work(&hdcp.pending_start);
+		}
+		hdcp_wq_disable();
+
 		/* In case of HDCP_STOP_FRAME_EVENT, HDCP stop
 		 * frame callback is blocked and waiting for
 		 * HDCP driver to finish accessing the HW
