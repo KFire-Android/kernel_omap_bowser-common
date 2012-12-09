@@ -1,0 +1,25 @@
+config TRAPZ
+	bool "Tracing and Profiling for Zpeed"
+	default n
+
+config TRAPZ_DETAIL
+	bool "Include cpu and pid/tid in trace log"
+	default n
+	depends on TRAPZ
+
+config TRAPZ_LED
+	bool "Support usage of debug LEDs"
+	default n
+	depends on TRAPZ
+	help
+		This should only be defined for targets that have debug LEDs
+		available and have the correct trapz platform device
+		defined.
+
+config TRAPZ_PERF
+	bool "Support starting/stoping perf tool from TRAPZ framework"
+	default n
+	depends on TRAPZ && DEBUG_FS
+	help
+		This feature should only be defined if DEBUG_FS is supported. This feature
+		also has functional dependencies on PMU support and perf tool.
