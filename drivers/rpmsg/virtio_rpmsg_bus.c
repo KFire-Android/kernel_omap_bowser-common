@@ -64,6 +64,7 @@ struct virtproc_info {
 	int last_rbuf, last_sbuf;
 	void *sim_base;
 	struct mutex svq_lock;
+	struct mutex rm_lock;
 	int num_bufs;
 	int buf_size;
 	struct idr endpoints;
@@ -558,6 +559,10 @@ static void rpmsg_recv_done(struct virtqueue *rvq)
 	struct device *dev = &rvq->vdev->dev;
 	int err;
 
+	/* if fail to acquire the lock, remove stage is happening, then just return */
+	if(!mutex_trylock(&vrp->rm_lock))
+		return;
+
 	/* make sure the descriptors are updated before reading */
 	rmb();
 	msg = virtqueue_get_buf(rvq, &len);
@@ -599,6 +604,7 @@ static void rpmsg_recv_done(struct virtqueue *rvq)
 
 	/* tell the remote processor we added another available rx buffer */
 	virtqueue_kick(vrp->rvq);
+	mutex_unlock(&vrp->rm_lock);
 }
 
 static void rpmsg_xmit_done(struct virtqueue *svq)
@@ -683,6 +689,7 @@ static int rpmsg_probe(struct virtio_device *vdev)
 	idr_init(&vrp->endpoints);
 	spin_lock_init(&vrp->endpoints_lock);
 	mutex_init(&vrp->svq_lock);
+	mutex_init(&vrp->rm_lock);
 	init_waitqueue_head(&vrp->sendq);
 
 	/* We expect two virtqueues, rx and tx (in this order) */
@@ -779,6 +786,9 @@ static void __devexit rpmsg_remove(struct virtio_device *vdev)
 	struct virtproc_info *vrp = vdev->priv;
 	int ret;
 
+	virtqueue_disable_cb(vrp->rvq);
+	mutex_lock(&vrp->rm_lock);
+
 	ret = device_for_each_child(&vdev->dev, NULL, rpmsg_remove_device);
 	if (ret)
 		dev_warn(&vdev->dev, "can't remove rpmsg device: %d\n", ret);
@@ -787,6 +797,8 @@ static void __devexit rpmsg_remove(struct virtio_device *vdev)
 	idr_destroy(&vrp->endpoints);
 
 	vdev->config->del_vqs(vrp->vdev);
+
+	mutex_unlock(&vrp->rm_lock);
 
 	kfree(vrp);
 }

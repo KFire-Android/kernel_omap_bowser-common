@@ -198,6 +198,7 @@ struct omap_i2c_dev {
 						 * if set, should be trsh+1
 						 */
 	u8			rev;
+	bool			shutdown;
 	unsigned		b_hw:1;		/* bad h/w fixes */
 	unsigned		idle:1;
 	u16			iestate;	/* Saved interrupt register */
@@ -624,6 +625,8 @@ static int omap_i2c_bus_clear(struct omap_i2c_dev *dev)
 {
 	u16 w;
 
+	dev_info(dev->dev, "BUS BUSY: hit errata: i694\n");
+
 	/* Per the I2C specification, if we are stuck in a bus busy state
 	 * we can attempt a bus clear to try and recover the bus by sending
 	 * at least 9 clock pulses on SCL. Put the I2C in a test mode so it
@@ -638,7 +641,6 @@ static int omap_i2c_bus_clear(struct omap_i2c_dev *dev)
 	msleep(1);
 	omap_i2c_write_reg(dev, OMAP_I2C_SYSTEST_REG, w);
 	omap_i2c_write_reg(dev, OMAP_I2C_CON_REG, 0);
-	omap_i2c_reset(dev);
 	omap_i2c_init(dev);
 
 	enable_irq(dev->irq);
@@ -727,8 +729,7 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 	dev->buf_len = 0;
 	if (r == 0) {
 		dev_err(dev->dev, "controller timed out\n");
-		omap_i2c_log_msg_print(dev);
-		omap_i2c_reset(dev);
+                omap_i2c_log_msg_print(dev);
 		omap_i2c_init(dev);
 		return -ETIMEDOUT;
 	}
@@ -738,7 +739,6 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 
 	/* We have an error */
 	if (dev->cmd_err & OMAP_I2C_STAT_AL) {
-		omap_i2c_reset(dev);
 		omap_i2c_init(dev);
 		return -EIO;
 	}
@@ -771,6 +771,9 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	if (dev == NULL)
 		return -EINVAL;
 
+	if (dev->shutdown)
+		return -EPERM;
+
 	r = omap_i2c_hwspinlock_lock(dev);
 	/* To-Do: if we are unable to acquire the lock, we must
 	try to recover somehow */
@@ -778,9 +781,8 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		return r;
 
 	/* We have the bus, enable IRQ */
-	enable_irq(dev->irq);
-
 	omap_i2c_unidle(dev);
+	enable_irq(dev->irq);
 
 	r = omap_i2c_wait_for_bb(dev);
 	if (r < 0)
@@ -811,9 +813,9 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 	omap_i2c_wait_for_bb(dev);
 out:
+	disable_irq(dev->irq);
 	omap_i2c_idle(dev);
 	omap_i2c_hwspinlock_unlock(dev);
-	disable_irq(dev->irq);
 	return r;
 }
 
@@ -961,7 +963,7 @@ omap_i2c_isr(int this_irq, void *dev_id)
 	u16 stat, w;
 	int err, count = 0;
 
-	if (dev->idle)
+	if (dev->idle || dev->shutdown)
 		return IRQ_NONE;
 
 	while ((stat = (omap_i2c_read_reg(dev, OMAP_I2C_STAT_REG))) & dev->iestate) {
@@ -986,7 +988,8 @@ complete:
 			err |= OMAP_I2C_STAT_NACK;
 
 		if (stat & OMAP_I2C_STAT_AL) {
-			dev_err(dev->dev, "Arbitration lost\n");
+			dev_err(dev->dev, "Dump stack on Arbitration lost\n");
+			dump_stack();
 			err |= OMAP_I2C_STAT_AL;
 		}
 		/*
@@ -1314,6 +1317,30 @@ omap_i2c_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#define PMIC_I2C_NAME "omap_i2c.1"
+static void
+omap_i2c_shutdown(struct platform_device *pdev)
+{
+	struct omap_i2c_dev	*dev = platform_get_drvdata(pdev);
+
+	/* Keep pmic i2c alive - for pm_power_off case */
+	if (!strcmp(dev_name(dev->dev), PMIC_I2C_NAME))
+			return;
+
+	/* Shutdown all other i2c controllers */
+	pm_runtime_get_sync(&pdev->dev);
+	omap_i2c_write_reg(dev, OMAP_I2C_CON_REG, 0);
+	/* Keep interrupts disabled */
+	free_irq(dev->irq, dev);
+	if (cpu_is_omap44xx() && dev->rev >= OMAP_I2C_REV_ON_4430)
+		omap_i2c_write_reg(dev, OMAP_I2C_IRQENABLE_CLR, 0x6FFF);
+	else
+		omap_i2c_write_reg(dev, OMAP_I2C_IE_REG, 0);
+	pm_runtime_put_sync(&pdev->dev);
+
+	dev->shutdown = true;
+}
+
 #ifdef CONFIG_SUSPEND
 static int omap_i2c_suspend(struct device *dev)
 {
@@ -1348,6 +1375,7 @@ static struct platform_driver omap_i2c_driver = {
 		.owner	= THIS_MODULE,
 		.pm	= OMAP_I2C_PM_OPS,
 	},
+	.shutdown	= omap_i2c_shutdown,
 };
 
 /* I2C may be needed to bring up other drivers */

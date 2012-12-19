@@ -603,9 +603,11 @@ int omap_dm_timer_stop(struct omap_dm_timer *timer)
 		return -EINVAL;
 
 	spin_lock_irqsave(&timer->lock, flags);
-	if (!timer->enabled) {
-		spin_unlock_irqrestore(&timer->lock, flags);
-		return -EINVAL;
+	if (timer->loses_context) {
+		if (!timer->enabled) {
+			spin_unlock_irqrestore(&timer->lock, flags);
+			return -EINVAL;
+		}
 	}
 
 	pdata = timer->pdev->dev.platform_data;

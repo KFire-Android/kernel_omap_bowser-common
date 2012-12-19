@@ -70,8 +70,6 @@ static struct usbhs_wakeup {
 	struct omap_hwmod *oh_ehci;
 	struct omap_hwmod *oh_ohci;
 	struct work_struct wakeup_work;
-	int wakeup_ehci:1;
-	int wakeup_ohci:1;
 	struct delayed_work wakeup_work_post_phy_wake;
 } *usbhs_wake;
 
@@ -852,8 +850,8 @@ void usbhs_wakeup()
 		/* Disable IO pad wakeup now that we got first interrupt */
 		val = omap_readw(USBB2_ULPIPHY_DAT0) & ~(OMAP_WAKEUP_EN);
 		omap_writew(val, USBB2_ULPIPHY_DAT0);
-		queue_work(pm_wq, &usbhs_wake->wakeup_work);
-    }
+		schedule_work(&usbhs_wake->wakeup_work);
+	}
 }
 
 extern struct usb_hcd *omap_ehci_hcd;

@@ -2402,6 +2402,39 @@ static int omapfb_init_display(struct omapfb2_device *fbdev,
 	return 0;
 }
 
+static void omapfb_send_vsync_work(struct work_struct *work)
+{
+	struct omapfb2_device *fbdev =
+		container_of(work, typeof(*fbdev), vsync_work);
+	char buf[64];
+	char *envp[2];
+
+	snprintf(buf, sizeof(buf), "VSYNC=%llu",
+		ktime_to_ns(fbdev->vsync_timestamp));
+	envp[0] = buf;
+	envp[1] = NULL;
+	kobject_uevent_env(&fbdev->dev->kobj, KOBJ_CHANGE, envp);
+}
+static void omapfb_vsync_isr(void *data, u32 mask)
+{
+	struct omapfb2_device *fbdev = data;
+	fbdev->vsync_timestamp = ktime_get();
+	schedule_work(&fbdev->vsync_work);
+}
+
+int omapfb_enable_vsync(struct omapfb2_device *fbdev)
+{
+	int r;
+	/* TODO: should determine correct IRQ like dss_mgr_wait_for_vsync does*/
+	r = omap_dispc_register_isr(omapfb_vsync_isr, fbdev, DISPC_IRQ_VSYNC);
+	return r;
+}
+
+void omapfb_disable_vsync(struct omapfb2_device *fbdev)
+{
+	omap_dispc_unregister_isr_sync(omapfb_vsync_isr, fbdev, DISPC_IRQ_VSYNC);//abhay
+}
+
 static int omapfb_probe(struct platform_device *pdev)
 {
 	struct omapfb2_device *fbdev = NULL;

@@ -39,6 +39,7 @@
 #include <linux/gpio.h>
 #include <linux/fb.h>
 #include <linux/omapfb.h>
+#include <sound/pcm.h>
 
 #include "dss.h"
 #include "dss_features.h"

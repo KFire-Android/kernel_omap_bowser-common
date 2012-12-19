@@ -93,6 +93,37 @@ struct regulator *dss_get_vdds_sdi(void)
 	return reg;
 }
 
+int dss_set_min_bus_tput(unsigned long tput)
+{
+	struct omap_dss_board_info *pdata = core.pdev->dev.platform_data;
+
+	if (pdata->set_min_bus_tput)
+		return pdata->set_min_bus_tput(&core.pdev->dev, tput);
+	else {
+		DSSERR("Unable to get set_min_bus_tput pointer\n");
+		return -EINVAL;
+	}
+}
+
+int dss_set_dispc_clk(unsigned long freq)
+{
+	struct clk *clk;
+	int r;
+
+	if (cpu_is_omap44xx()) {
+		clk = clk_get(NULL, "dpll_per_m5x2_ck");
+		if (IS_ERR(clk)) {
+			DSSERR("Failed to get dpll_per_m5x2_ck\n");
+			r = PTR_ERR(clk);
+			return r;
+		}
+		r = clk_set_rate(clk, freq);
+		if (r)
+			return r;
+	}
+	return 0;
+}
+
 #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_OMAP2_DSS_DEBUG_SUPPORT)
 static int dss_debug_show(struct seq_file *s, void *unused)
 {

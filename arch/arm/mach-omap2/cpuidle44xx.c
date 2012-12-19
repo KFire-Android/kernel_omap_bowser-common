@@ -306,16 +306,18 @@ static void omap4_enter_idle_primary(struct omap4_processor_cx *cx)
 	if (skip_off)
 		goto out;
 
-	/* spin until cpu1 is really off */
-	while ((pwrdm_read_pwrst(cpu1_pd) != PWRDM_POWER_OFF) && count--)
-		cpu_relax();
+	if (!cpu_is_offline(1)) {
+		/* spin until cpu1 is really off */
+		while ((pwrdm_read_pwrst(cpu1_pd) != PWRDM_POWER_OFF) && count--)
+			cpu_relax();
 
-	if (pwrdm_read_pwrst(cpu1_pd) != PWRDM_POWER_OFF)
-		goto wake_cpu1;
+		if (pwrdm_read_pwrst(cpu1_pd) != PWRDM_POWER_OFF)
+			goto wake_cpu1;
 
-	ret = pwrdm_wait_transition(cpu1_pd);
-	if (ret)
-		goto wake_cpu1;
+		ret = pwrdm_wait_transition(cpu1_pd);
+		if (ret)
+			goto wake_cpu1;
+	}
 
 	if (!keep_mpu_on) {
 		pwrdm_set_logic_retst(mpu_pd, cx->mpu_logic_state);

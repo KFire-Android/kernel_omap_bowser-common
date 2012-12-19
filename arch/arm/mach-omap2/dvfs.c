@@ -917,8 +917,10 @@ fail:
 	pr_warning("%s: domain%s: No clean recovery available! could be bad!\n",
 			__func__, voltdm->name);
 out:
+#ifdef CONFIG_OMAP_SMARTREFLEX
 	/* Re-enable Smartreflex module */
 	omap_sr_enable(voltdm, new_vdata);
+#endif
 
 	return ret;
 }
