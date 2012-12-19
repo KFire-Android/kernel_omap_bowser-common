@@ -255,7 +255,6 @@ struct twl6040 {
 	enum twl6040_pll_id pll;
 	unsigned int sysclk;
 	int icrev;
-	u8 cache[TWL6040_CACHEREGNUM];
 
 	unsigned int irq;
 	unsigned int irq_base;
