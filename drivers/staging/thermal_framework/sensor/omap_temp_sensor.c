@@ -56,11 +56,11 @@
  * for testing tshut mechanism
  */
 
-/* #define TSHUT_DEBUG	1 */
+/*#define TSHUT_DEBUG	1 */
 #define TEMP_DEBUG 1
 
-#define TSHUT_THRESHOLD_TSHUT_HOT	100000	/* 100 deg C */
-#define TSHUT_THRESHOLD_TSHUT_COLD	80000	/* 80 deg C */
+#define TSHUT_THRESHOLD_TSHUT_HOT	110000	/* 110 deg C */
+#define TSHUT_THRESHOLD_TSHUT_COLD	100000	/* 100 deg C */
 #define BGAP_THRESHOLD_T_HOT		73000	/* 73 deg C */
 #define BGAP_THRESHOLD_T_COLD		71000	/* 71 deg C */
 #define OMAP_ADC_START_VALUE	530
@@ -917,7 +917,11 @@ static irqreturn_t omap_talert_irq_handler(int irq, void *data)
 		temp_sensor->therm_fw->current_temp =
 				adc_to_temp[temp - OMAP_ADC_START_VALUE];
 		thermal_sensor_set_temp(temp_sensor->therm_fw);
-		kobject_uevent(&temp_sensor->dev->kobj, KOBJ_CHANGE);
+		snprintf(env_temp, 20, "TEMP=%d",thermal_sensor_get_hotspot_temp(temp_sensor->therm_fw)/1000);
+                envp[0] = env_temp;
+		snprintf(env_zone, 20, "ZONE=%d",thermal_sensor_get_zone(temp_sensor->therm_fw));
+                envp[1] = env_zone;
+		kobject_uevent_env(&temp_sensor->dev->kobj, KOBJ_CHANGE, envp);
 	}
 
 	return IRQ_HANDLED;
