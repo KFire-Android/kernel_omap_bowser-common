@@ -35,6 +35,14 @@
 #include <linux/oom.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
+#ifdef CONFIG_LAB126
+#include <linux/workqueue.h>
+#include <linux/slab.h>
+#include <linux/logger.h>
+#include <linux/metricslog.h>
+#define LMK_METRIC_TAG "kernel"
+#define LMK_METRIC_PREFIX "lmk:"
+#endif
 
 static uint32_t lowmem_debug_level = 2;
 static int lowmem_adj[6] = {
@@ -68,6 +76,34 @@ static struct notifier_block task_nb = {
 	.notifier_call	= task_notify_func,
 };
 
+#ifdef CONFIG_LAB126
+struct log_kill_data_struct {
+	int pid;
+	int tasksize;
+	int oom_adj;
+	char comm[20];
+	struct work_struct work;
+};
+
+static void log_kill_wq(struct work_struct *work)
+{
+	char logcatbuf[100];
+	struct log_kill_data_struct *log_kill_data = container_of(work, struct log_kill_data_struct, work);
+
+	// We log to both metrics and main log buffers here so we can get access
+	// to this info everywhere.
+	snprintf(logcatbuf, 100, LMK_METRIC_PREFIX "sigkill:name=%s,pid=%d,adj=%d,size=%d:",
+		log_kill_data->comm, log_kill_data->pid, log_kill_data->oom_adj, log_kill_data->tasksize);
+	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatbuf);
+
+	snprintf(logcatbuf, 100, "lowmemkiller sending sigkill to %d (%s), adj %d, size %d\n",
+		log_kill_data->pid, log_kill_data->comm, log_kill_data->oom_adj, log_kill_data->tasksize);
+	alog_main(4, LMK_METRIC_TAG, logcatbuf);
+
+	kfree(log_kill_data);
+}
+#endif
+
 static int
 task_notify_func(struct notifier_block *self, unsigned long val, void *data)
 {
@@ -89,6 +125,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int min_adj = OOM_ADJUST_MAX + 1;
 	int selected_tasksize = 0;
 	int selected_oom_adj;
+#ifdef CONFIG_LAB126
+	struct log_kill_data_struct *log_kill_data;
+#endif
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free = global_page_state(NR_FREE_PAGES);
 	int other_file = global_page_state(NR_FILE_PAGES) -
@@ -170,6 +209,23 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		lowmem_print(1, "send sigkill to %d (%s), adj %d, size %d\n",
 			     selected->pid, selected->comm,
 			     selected_oom_adj, selected_tasksize);
+#ifdef CONFIG_LAB126
+		// We log to adb on a work queue, since adb logcat acquires a mutex,
+		// and thus can go to sleep.
+		log_kill_data = kzalloc(sizeof(struct log_kill_data_struct), GFP_KERNEL);
+		if (log_kill_data) {
+			INIT_WORK(&log_kill_data->work, log_kill_wq);
+
+			log_kill_data->pid = selected->pid;
+			log_kill_data->tasksize = selected_tasksize;
+			log_kill_data->oom_adj = selected_oom_adj;
+			snprintf(log_kill_data->comm, 20, selected->comm);
+
+			schedule_work(&log_kill_data->work);
+		} else {
+			lowmem_print(2, "could not allocate mem to log sigkill to adb for %d!\n", selected->pid);
+		}
+#endif
 		lowmem_deathpending = selected;
 		lowmem_deathpending_timeout = jiffies + HZ;
 		force_sig(SIGKILL, selected);

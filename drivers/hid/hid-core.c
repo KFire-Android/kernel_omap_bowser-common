@@ -1946,6 +1946,11 @@ int hid_add_device(struct hid_device *hdev)
 	static atomic_t id = ATOMIC_INIT(0);
 	int ret;
 
+   if( hdev == NULL )
+   {
+      return -ENODEV;
+   }
+   
 	if (WARN_ON(hdev->status & HID_STAT_ADDED))
 		return -EBUSY;
 
@@ -1960,7 +1965,12 @@ int hid_add_device(struct hid_device *hdev)
 	dev_set_name(&hdev->dev, "%04X:%04X:%04X.%04X", hdev->bus,
 		     hdev->vendor, hdev->product, atomic_inc_return(&id));
 
-	hid_debug_register(hdev, dev_name(&hdev->dev));
+	if( hid_debug_register(hdev, dev_name(&hdev->dev)) == -1 )
+	{
+	   pr_err("can't register hid device\n");
+	   return -ENODEV;
+	}
+	
 	ret = device_add(&hdev->dev);
 	if (!ret)
 		hdev->status |= HID_STAT_ADDED;
