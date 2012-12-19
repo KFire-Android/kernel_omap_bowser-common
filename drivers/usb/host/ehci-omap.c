@@ -801,12 +801,19 @@ static void ehci_hcd_omap_shutdown(struct platform_device *pdev)
 	}
 }
 
+/* Is device attached to EHCI */
+int usb_device_attached = 0;
+
+static int usb_bus_suspended = 0;
+
 static int ehci_omap_bus_suspend(struct usb_hcd *hcd)
 {
 	struct device *dev = hcd->self.controller;
+	struct ehci_hcd *ehci = hcd_to_ehci (hcd);
 	struct ehci_hcd_omap_platform_data  *pdata;
 	struct omap_hwmod	*oh;
 	struct clk *clk;
+	int port;
 	int ret = 0;
 	int i;
 

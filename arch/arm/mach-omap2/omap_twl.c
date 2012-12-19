@@ -314,9 +314,9 @@ static struct omap_voltdm_pmic omap443x_446x_iva_pmic = {
 	.vp_vddmin		= OMAP4_VP_IVA_VLIMITTO_VDDMIN,
 	.vp_vddmax		= OMAP4_VP_IVA_VLIMITTO_VDDMAX,
 	.vp_timeout_us		= OMAP4_VP_VLIMITTO_TIMEOUT_US,
-	.i2c_slave_addr		= TWL6030_SRI2C_SLAVE_ADDR,
-	.volt_reg_addr		= TWL6030_VCORE2_SR_VOLT_REG,
-	.cmd_reg_addr		= TWL6030_VCORE2_SR_CMD_REG,
+	.i2c_slave_addr		= TWL6032_SRI2C_SLAVE_ADDR,
+	.volt_reg_addr		= TWL6032_SMPS5_SR_VOLT_REG,
+	.cmd_reg_addr		= TWL6032_SMPS5_SR_CMD_REG,
 	.i2c_high_speed		= true,
 	.i2c_scll_low		= 0x28,
 	.i2c_scll_high		= 0x2C,
@@ -388,7 +388,7 @@ static struct omap_voltdm_pmic omap446x_core_pmic = {
 	.onlp_volt		= 1200000,
 	.ret_volt		= 750000,
 	/* OMAP4 + TWL + TPS limitation keep off_volt same as ret_volt */
-	.off_volt		= 750000,
+	.off_volt		= 0,
 	.volt_setup_time	= 0,
 	.switch_on_time		= 549,
 	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
@@ -397,9 +397,9 @@ static struct omap_voltdm_pmic omap446x_core_pmic = {
 	.vp_vddmin		= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
 	.vp_vddmax		= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
 	.vp_timeout_us		= OMAP4_VP_VLIMITTO_TIMEOUT_US,
-	.i2c_slave_addr		= TWL6030_SRI2C_SLAVE_ADDR,
-	.volt_reg_addr		= TWL6030_VCORE1_SR_VOLT_REG,
-	.cmd_reg_addr		= TWL6030_VCORE1_SR_CMD_REG,
+	.i2c_slave_addr		= TWL6032_SRI2C_SLAVE_ADDR,
+	.volt_reg_addr		= TWL6032_SMPS2_SR_VOLT_REG,
+	.cmd_reg_addr		= TWL6032_SMPS2_SR_CMD_REG,
 	.i2c_high_speed		= true,
 	.i2c_scll_low		= 0x28,
 	.i2c_scll_high		= 0x2C,
@@ -548,8 +548,8 @@ static __initdata struct omap_pmic_map omap_twl_map[] = {
 	},
 	{
 		.name = "mpu",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP443X |
-						CHIP_IS_OMAP447X),
+		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP443X | 
+						CHIP_IS_OMAP446X | CHIP_IS_OMAP447X),
 		.pmic_data = &omap443x_447x_mpu_pmic,
 	},
 	{

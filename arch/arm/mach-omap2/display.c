@@ -74,6 +74,11 @@ static const struct omap_dss_hwmod_data omap4_dss_hwmod_data[] __initdata = {
 	{ "dss_hdmi", "omapdss_hdmi", -1 },
 };
 
+static int omap_dss_set_min_bus_tput(struct device *dev, unsigned long tput)
+{
+	return omap_pm_set_min_bus_tput(dev, OCP_INITIATOR_AGENT, tput);
+}
+
 int __init omap_display_init(struct omap_dss_board_info *board_data)
 {
 	int r = 0;
@@ -97,6 +102,7 @@ int __init omap_display_init(struct omap_dss_board_info *board_data)
 	}
 
 	pdata.board_data = board_data;
+	pdata.board_data->set_min_bus_tput = omap_dss_set_min_bus_tput;
 
 	for (i = 0; i < oh_count; i++) {
 		oh = omap_hwmod_lookup(curr_dss_hwmod[i].oh_name);

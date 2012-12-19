@@ -2423,6 +2423,7 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 
 	/* Since we do only SG emulation, we can have as many segs
 	 * as we want. */
+//	mmc->max_segs = DMA_TABLE_NUM_ENTRIES;
 
 	if (host->dma_type == ADMA_XFER) {
 		/* Worst case is when above block layer gives us 512 segments,
@@ -2435,9 +2436,12 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 		  */
 		mmc->max_segs = DMA_TABLE_NUM_ENTRIES/2;
 		mmc->max_blk_size = 512;       /* Block Length at max can be 1024 */
-		mmc->max_blk_count = ADMA_MAX_BLKS_PER_ROW *
-							DMA_TABLE_NUM_ENTRIES/2;
-		mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count;
+//		mmc->max_blk_count = 120;      /* ADMA Block size is 16 bits wide */
+//		mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count
+//					* DMA_TABLE_NUM_ENTRIES;
+                mmc->max_blk_count = ADMA_MAX_BLKS_PER_ROW *
+                                                        DMA_TABLE_NUM_ENTRIES/2;
+                mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count;
 	} else {
 		mmc->max_segs = DMA_TABLE_NUM_ENTRIES;
 		mmc->max_blk_size = 512;       /* Block Length at max can be 1024 */

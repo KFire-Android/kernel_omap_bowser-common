@@ -460,10 +460,12 @@ abort_device_off:
 		}
 
 		omap_temp_sensor_resume_idle();
+#ifdef CONFIG_OMAP_SMARTREFLEX
 		omap_sr_enable(iva_voltdm,
 				omap_voltage_get_curr_vdata(iva_voltdm));
 		omap_sr_enable(core_voltdm,
 				omap_voltage_get_curr_vdata(core_voltdm));
+#endif
 	}
 
 	if (omap4_device_prev_state_off()) {
@@ -483,8 +485,10 @@ abort_device_off:
 	if (mpu_next_state < PWRDM_POWER_INACTIVE) {
 		omap_vc_set_auto_trans(mpu_voltdm,
 				OMAP_VC_CHANNEL_AUTO_TRANSITION_DISABLE);
+#ifdef CONFIG_OMAP_SMARTREFLEX
 		omap_sr_enable(mpu_voltdm,
 				omap_voltage_get_curr_vdata(mpu_voltdm));
+#endif
 	}
 
 	/*
@@ -1747,6 +1751,11 @@ static int __init omap4_pm_init(void)
 			/* Continue to next device */
 		}
 	}
+
+#if defined(CONFIG_LAB126)
+	INIT_WORK(&metrics_work, wokeup_metrics);
+	INIT_WORK(&metrics_work_offmode, wokeup_metrics_offmode);
+#endif
 
 err2:
 	return ret;
