@@ -1429,8 +1429,8 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 		if (fbdev->vsync_active)
 			omapfb_disable_vsync(fbdev);
 
-		if (display->state != OMAP_DSS_DISPLAY_ACTIVE)
-			goto exit;
+//		if (display->state != OMAP_DSS_DISPLAY_ACTIVE)
+//			goto exit;
 
 		while (num_displays) {
 			display = fbdev->displays[--num_displays];
