@@ -282,8 +282,8 @@ static int omap_dss_probe(struct platform_device *pdev)
 		}
 	}
 
-		if (def_disp_name && strcmp(def_disp_name, dssdev->name) == 0)
-			pdata->default_device = dssdev;
+//		if (def_disp_name && strcmp(def_disp_name, dssdev->name) == 0)
+//			pdata->default_device = dssdev;
 #ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
 	if (unlikely(first_boot != 0)) {
 		iclk = clk_get(NULL, "ick");
