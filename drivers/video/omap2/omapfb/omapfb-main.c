@@ -29,6 +29,7 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/omapfb.h>
+#include <linux/cpufreq.h>
 #include <linux/wait.h>
 
 #include <video/omapdss.h>
