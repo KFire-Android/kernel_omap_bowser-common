@@ -1,6 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux/arm 3.0.31 Kernel Configuration
+# Linux/arm 3.0.50 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -384,6 +384,9 @@ CONFIG_PL310_ERRATA_727915=y
 # CONFIG_ARM_ERRATA_753970 is not set
 # CONFIG_ARM_ERRATA_754322 is not set
 # CONFIG_ARM_ERRATA_754327 is not set
+# CONFIG_ARM_ERRATA_764369 is not set
+CONFIG_PL310_ERRATA_769419=y
+# CONFIG_ARM_ERRATA_775420 is not set
 CONFIG_ARM_GIC=y
 CONFIG_FIQ_GLUE=y
 CONFIG_FIQ_DEBUGGER=y
@@ -397,8 +400,6 @@ CONFIG_FIQ_DEBUGGER=y
 # CONFIG_PCI_SYSCALL is not set
 # CONFIG_ARCH_SUPPORTS_MSI is not set
 # CONFIG_PCCARD is not set
-# CONFIG_ARM_ERRATA_764369 is not set
-CONFIG_PL310_ERRATA_769419=y
 
 #
 # Kernel Features
@@ -2177,6 +2178,7 @@ CONFIG_SND_SOC_WM8962=y
 CONFIG_HID_SUPPORT=y
 CONFIG_HID=y
 # CONFIG_HIDRAW is not set
+CONFIG_UHID=y
 
 #
 # USB Input Devices
