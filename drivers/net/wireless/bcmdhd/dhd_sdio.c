@@ -66,6 +66,11 @@
 #include <dhdioctl.h>
 #include <sdiovar.h>
 
+// for IDME API's
+#include <mach/bowser_idme_init.h>
+extern int idme_get_board_type(void);
+//end
+
 #ifndef DHDSDIO_MEM_DUMP_FNAME
 #define DHDSDIO_MEM_DUMP_FNAME         "mem_dump"
 #endif
@@ -5199,7 +5204,7 @@ done:
 }
 #endif /* DHD_DEBUG */
 
-#if (defined DHD_DEBUG)
+
 static void
 dhd_dump_cis(uint fn, uint8 *cis)
 {
@@ -5226,8 +5231,63 @@ dhd_dump_cis(uint fn, uint8 *cis)
 	}
 	if ((byte % 16) != 15)
 		DHD_INFO(("\n"));
+
+	DHD_INFO(("-----\n    byte = %d \n", byte));
 }
-#endif /* DHD_DEBUG */
+
+#define USI_MODULE_SIGNATURE			{0x55, 0x53, 0x49}		//'U','S','I'.
+#define SEMCO_MODULE_SIGNATURE			{0x53, 0x45, 0x4D}		//'S','E','M'. But SEMCO does not store signature in OTP, yet.
+
+#define MODULE_MAKER_TABLE_SIZE		2
+static uint8 moduleMakerSignature[MODULE_MAKER_TABLE_SIZE][3] = {SEMCO_MODULE_SIGNATURE, USI_MODULE_SIGNATURE};
+static char* moduleMakerName[MODULE_MAKER_TABLE_SIZE] = {"semco", "usi"};
+static int defaultModuleMaker = 0;	// SEMCO
+
+static int
+lab_detect_module_maker(uint fn, uint8 *cis)
+{
+	uint byte, tag, tdata;
+	uint i, len;
+
+	//printk("%s: Function %d CIS:\n", __FUNCTION__, fn);
+
+	// The following logic is from dhd_dump_cis().
+	for (tdata = byte = 0; byte < SBSDIO_CIS_SIZE_LIMIT; byte++) {
+
+		if (!tdata--) {
+			tag = cis[byte];
+			if (tag == 0xff)
+				break;
+			else if (!tag)
+				tdata = 0;
+			else if ((byte + 1) < SBSDIO_CIS_SIZE_LIMIT)
+				tdata = cis[byte + 1] + 1;
+		}
+	}
+
+	len = byte;
+
+	// There are <len> bytes of useful data in CIS.
+	// Now, look for a pattern in it.
+	//printk("len = %d\n", len);
+
+	for (byte = 0; byte < (len-5); byte++) {
+		for (i = 0; i < MODULE_MAKER_TABLE_SIZE; i++) {
+			if ((cis[byte+0]   == 0x80) &&
+				//The second byte indicates record length. Ignored for signature comparison.
+				(cis[byte+2] == 0x81) &&
+				(cis[byte+3] == moduleMakerSignature[i][0]) &&
+				(cis[byte+4] == moduleMakerSignature[i][1]) &&
+				(cis[byte+5] == moduleMakerSignature[i][2])   ) {
+
+				// We have a match. Return table index.
+				return i;
+			}
+		}
+	}
+
+	return -1;
+}
 
 static bool
 dhdsdio_chipmatch(uint16 chipid)
@@ -5480,11 +5540,15 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 		goto fail;
 	}
 
-#ifdef DHD_DEBUG
-	if (DHD_INFO_ON()) {
+	// The following logic reads the OTP and determines an appropriate NVRAM file.
+	if (1) {
 		uint fn, numfn;
 		uint8 *cis[SDIOD_MAX_IOFUNCS];
 		int err = 0;
+		int moduleMaker = -1;
+		char *module_maker_name;
+		char new_nv_path[256] = "";
+		int boardType;
 
 		numfn = bcmsdh_query_iofnum(sdh);
 		ASSERT(numfn <= SDIOD_MAX_IOFUNCS);
@@ -5511,7 +5575,75 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 				MFREE(osh, cis[fn], SBSDIO_CIS_SIZE_LIMIT);
 				break;
 			}
-			dhd_dump_cis(fn, cis[fn]);
+
+			if (DHD_INFO_ON()) {
+				dhd_dump_cis(fn, cis[fn]);
+			}
+
+			// Try to figure out which WiFi module do we have on the board.
+
+			if (moduleMaker < 0) {
+				moduleMaker = lab_detect_module_maker(fn, cis[fn]);
+			}
+		}
+
+		printk("%s: module maker = %d\n", __FUNCTION__, moduleMaker);
+
+		if (moduleMaker < MODULE_MAKER_TABLE_SIZE) {
+
+			if (moduleMaker >= 0) {
+				module_maker_name = moduleMakerName[moduleMaker];
+				DHD_ERROR(("%s: module maker name = %s\n", __FUNCTION__, module_maker_name));
+			}
+			else {
+				module_maker_name = moduleMakerName[defaultModuleMaker];
+				DHD_ERROR(("%s: module maker name = (default: %s)\n", __FUNCTION__, module_maker_name));
+			}
+
+			// Adjust the firmware path accordingly
+			DHD_ERROR(("%s: nv_path was %s\n", __FUNCTION__, nv_path));
+
+			boardType = idme_get_board_type();
+
+			if ((boardType == BOARD_TYPE_TATE) 		||
+				(boardType == BOARD_TYPE_TATE_EVT3)     ||
+				(boardType == BOARD_TYPE_JEM_WIFI) 	||
+				(boardType == BOARD_TYPE_JEM_WAN) 	||
+				(boardType == BOARD_TYPE_RADLEY)  		) {
+
+				bcm_strcpy_s(new_nv_path, sizeof(new_nv_path), "/system/etc/wifi/nvram_");
+
+				switch (boardType) {
+				case BOARD_TYPE_TATE:
+				case BOARD_TYPE_TATE_EVT3:
+					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "tate_");
+					break;
+				case BOARD_TYPE_JEM_WIFI:
+					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "jem_");
+					break;
+				case BOARD_TYPE_JEM_WAN:
+					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "jem-wan_");
+					break;
+				case BOARD_TYPE_RADLEY:
+					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "radley_");
+					break;
+				default:
+					// should not get here ...
+					DHD_ERROR(("%s: error in board type checking\n", __FUNCTION__));
+					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "tate_");
+					break;
+				}
+
+				bcm_strcat_s(new_nv_path, sizeof(nv_path), module_maker_name);
+				bcm_strcat_s(new_nv_path, sizeof(new_nv_path), ".txt");
+			}
+			else {
+				// We couldn't figure out the board type. Fall back to use the generic name.
+				bcm_strcpy_s(new_nv_path, sizeof(new_nv_path), "/system/etc/wifi/bcmdhd.cal");
+			}
+
+			bcm_strcpy_s(nv_path, sizeof(nv_path), new_nv_path);
+			DHD_ERROR(("%s: nv_path set to %s\n", __FUNCTION__, nv_path));
 		}
 
 		while (fn-- > 0) {
@@ -5524,7 +5656,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 			goto fail;
 		}
 	}
-#endif /* DHD_DEBUG */
+
 
 	/* si_attach() will provide an SI handle and scan the backplane */
 	if (!(bus->sih = si_attach((uint)devid, osh, regsva, DHD_BUS, sdh,
