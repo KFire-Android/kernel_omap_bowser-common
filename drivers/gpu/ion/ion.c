@@ -258,7 +258,7 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 		/* if the client doesn't support this heap type */
 		if (!((1 << heap->type) & client->heap_mask))
 			continue;
-		/* if the caller didn't specify this heap type */
+		/* if the caller didn't specify this heap ID */
 		if (!((1 << heap->id) & flags))
 			continue;
 		buffer = ion_buffer_create(heap, dev, len, align, flags);
@@ -1149,7 +1149,7 @@ static const struct file_operations ion_fops = {
 };
 
 static size_t ion_debug_heap_total(struct ion_client *client,
-				   enum ion_heap_type type)
+				   unsigned int id)
 {
 	size_t size = 0;
 	struct rb_node *n;
@@ -1159,7 +1159,7 @@ static size_t ion_debug_heap_total(struct ion_client *client,
 		struct ion_handle *handle = rb_entry(n,
 						     struct ion_handle,
 						     node);
-		if (handle->buffer->heap->type == type)
+		if (handle->buffer->heap->id == id)
 			size += handle->buffer->size;
 	}
 	mutex_unlock(&client->lock);
@@ -1177,7 +1177,7 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 		struct ion_client *client = rb_entry(n, struct ion_client,
 						     node);
 		char task_comm[TASK_COMM_LEN];
-		size_t size = ion_debug_heap_total(client, heap->type);
+		size_t size = ion_debug_heap_total(client, heap->id);
 		if (!size)
 			continue;
 
@@ -1189,7 +1189,7 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 	for (n = rb_first(&dev->kernel_clients); n; n = rb_next(n)) {
 		struct ion_client *client = rb_entry(n, struct ion_client,
 						     node);
-		size_t size = ion_debug_heap_total(client, heap->type);
+		size_t size = ion_debug_heap_total(client, heap->id);
 		if (!size)
 			continue;
 		seq_printf(s, "%16.s %16u %16u\n", client->name, client->pid,
