@@ -31,7 +31,6 @@
 #include <linux/debugfs.h>
 #include <linux/rpmsg_resmgr.h>
 #include <linux/pm_runtime.h>
-#include <linux/cpufreq.h>
 #include <plat/dmtimer.h>
 #include <plat/rpres.h>
 #include <plat/clock.h>
@@ -209,7 +208,7 @@ static int rprm_auxclk_request(struct rprm_elem *e, struct rprm_auxclk *obj)
 		goto error_aux_src;
 	}
 
-	ret = clk_set_rate(src_parent, (obj->parent_src_clk_rate));
+	ret = clk_set_rate(src_parent, obj->parent_src_clk_rate);
 	if (ret) {
 		pr_err("%s: rate not supported by %s\n", __func__,
 					clk_src_name[obj->parent_src_clk]);
@@ -231,7 +230,7 @@ static int rprm_auxclk_request(struct rprm_elem *e, struct rprm_auxclk *obj)
 		goto error_aux_src_parent;
 	}
 
-	ret = clk_set_rate(acd->aux_clk, (obj->clk_rate));
+	ret = clk_set_rate(acd->aux_clk, obj->clk_rate);
 	if (ret) {
 		pr_err("%s: rate not supported by %s\n", __func__, clk_name);
 		goto error_aux_enable;
@@ -547,17 +546,6 @@ int _set_constraints(struct rprm_elem *e, struct rprm_constraints_data *c)
 	}
 
 	if (c->mask & RPRM_SCALE) {
-		if (e->type == RPRM_IVAHD) {
-			/*
-			 * Use IVAHD frequency as a secondary hint for cpufreq governor.
-			 * When video is paused the IVAHD should be clock gated.
-			 */
-			if (c->frequency)
-				send_video_hint(1);
-			else
-				send_video_hint(0);
-		}
-
 		ret = _set_constraints_func(e, RPRM_SCALE, c->frequency);
 		if (ret)
 			goto err;
@@ -745,15 +733,6 @@ static int rprm_resource_free(struct rprm *rprm, u32 addr, int res_id)
 		ret = -ENOENT;
 		goto out;
 	}
-	if (e->type == RPRM_IVAHD) {
-		/*
-		 * Hint cpufreq governor that we have finished decoding
-		 * video. (In fact IVAHD is also in use when we are encoding
-		 * but that is OK.)
-		 */
-		send_video_hint(0);
-	}
-
 	idr_remove(&rprm->id_list, res_id);
 	list_del(&e->next);
 out:
@@ -850,14 +829,6 @@ static int rprm_resource_alloc(struct rprm *rprm, u32 addr, int *res_id,
 	ret = idr_get_new(&rprm->id_list, e, res_id);
 	if (ret)
 		goto err;
-
-	if (e->type == RPRM_IVAHD) {
-		/*
-		 * Hint cpufreq governor that we have begun decoding video. (In
-		 * fact IVAHD is also in use when we are encoding but that is OK.)
-		 */
-		send_video_hint(1);
-	}
 
 	e->type = type;
 	e->src = addr;
