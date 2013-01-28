@@ -175,18 +175,6 @@ struct cpufreq_governor {
 					 char *buf);
 	int	(*store_setspeed)	(struct cpufreq_policy *policy,
 					 unsigned int freq);
-	int	(*boost_cpu_freq)		(struct cpufreq_policy *policy);
-
-	unsigned int (*show_boost_timeout)	(struct cpufreq_policy *policy);
-	void	(*store_boost_timeout)		(struct cpufreq_policy *policy,
-						  unsigned int timeout);
-
-	int	(*show_video_hint)	(char *buf);
-	void	(*store_video_hint)	(struct cpufreq_policy *policy,
-					unsigned int hint);
-	int	(*show_panel_hint)	(char *buf);
-	void	(*store_panel_hint)	(struct cpufreq_policy *policy,
-					unsigned int hint);
 	unsigned int max_transition_latency; /* HW must be able to switch to
 			next freq faster than this value in nano secs or we
 			will fallback to performance governor */
@@ -322,10 +310,6 @@ __ATTR(_name, 0644, show_##_name, store_##_name)
  *********************************************************************/
 int cpufreq_get_policy(struct cpufreq_policy *policy, unsigned int cpu);
 int cpufreq_update_policy(unsigned int cpu);
-void send_panel_hint(int hint);
-void send_video_hint(int hint);
-
-void cpufreq_boost(void);
 
 #ifdef CONFIG_CPU_FREQ
 /* query the current CPU frequency (in kHz). If zero, cpufreq couldn't detect it */
