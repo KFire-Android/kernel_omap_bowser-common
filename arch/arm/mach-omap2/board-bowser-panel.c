@@ -356,9 +356,9 @@ static struct platform_device *bowser_devices[] __initdata = {
 	&bowser_backlight_device,
 };
 
-//Allocate 24 MB for TILER1D slot size for WUXGA panel on JEM, total of 48 MB of TILER1D
+//Allocate 27 MB for TILER1D slot size for WUXGA panel on JEM, total of 54 MB of TILER1D
 static struct dsscomp_platform_data dsscomp_config_wuxga = {
-               .tiler1d_slotsz = ( SZ_16M + SZ_8M ),
+               .tiler1d_slotsz = ( SZ_16M + SZ_2M + SZ_8M + SZ_1M ),
 };
 
 #if defined(CONFIG_FB_OMAP2_NUM_FBS)
@@ -378,7 +378,6 @@ static struct sgx_omaplfb_platform_data omaplfb_plat_data_wuxga = {
 	.num_configs = OMAPLFB_NUM_DEV,
 	.configs = omaplfb_config_wuxga,
 };
-
 
 static void tablet_hdmi_mux_init(void)
 {
