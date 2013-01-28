@@ -655,7 +655,6 @@ static void cpufreq_interactive_freq_down(struct work_struct *work)
 		mutex_unlock(&set_speed_lock);
 		trace_cpufreq_interactive_down(cpu, pcpu->target_freq,
 					       pcpu->policy->cur);
-
 	}
 }
 
