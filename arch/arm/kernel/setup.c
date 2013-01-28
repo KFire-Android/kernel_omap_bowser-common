@@ -697,7 +697,7 @@ static int __init parse_tag_serial16(const struct tag *tag)
 		tag->u.id16.data,
 		SERIAL16_SIZE); /* Serial nuber */
 
-	pr_debug("ATAGS:serial16:str=\"%.*s\"\n",
+	pr_info("ATAGS:serial16:str=\"%.*s\"\n",
 			SERIAL16_SIZE,
 			system_serial16);
 
@@ -725,11 +725,11 @@ static int __init parse_tag_bootmode(const struct tag *tag)
         memset(system_postmode, 0, BOOTMODE_SIZE+1);
 	memcpy(system_bootmode, tag->u.bootmode.boot, BOOTMODE_SIZE);
 	memcpy(system_postmode, tag->u.bootmode.post, BOOTMODE_SIZE);
-	pr_debug("ATAGS:bootmode:boot=\"%.*s\" post=\"%.*s\"\n",
+	pr_info("ATAGS:bootmode:boot=\"%.*s\" post=\"%.*s\"\n",
                BOOTMODE_SIZE, system_bootmode, BOOTMODE_SIZE, system_postmode);
 
         memcpy((char *)&count, tag->u.bootmode.post, sizeof(unsigned long));
-        pr_debug("ATAG boot count = %lu\n", count);
+        pr_info("ATAG boot count = %lu\n", count);
 
 	return 0;
 }
@@ -746,7 +746,7 @@ static int __init parse_tag_mac(const struct tag *tag)
 	memcpy(system_mac_addr, tag->u.macaddr.wifi_addr, MAC_ADDR_SIZE);
 	memcpy(system_bt_mac_addr, tag->u.macaddr.bt_addr, MAC_ADDR_SIZE);
 
-	pr_debug("ATAGS:mac:addr=%.*s secret=%.*s bt=%.*s\n",
+	pr_info("ATAGS:mac:addr=%.*s secret=%.*s bt=%.*s\n",
 		MAC_ADDR_SIZE, system_mac_addr,
 		MAC_SEC_SIZE, system_mac_sec,
 		MAC_ADDR_SIZE, system_bt_mac_addr);
@@ -760,7 +760,7 @@ static int __init parse_tag_productid(const struct tag *tag)
 {
 	memset(system_productid, 0, PRODUCTID_SIZE+1);
 	memcpy(system_productid, tag->u.productid.pid, PRODUCTID_SIZE); /* product id */
-	pr_debug("ATAGS:productid:str=\"%.*s\"\n",
+	pr_info("ATAGS:productid:str=\"%.*s\"\n",
                PRODUCTID_SIZE, system_productid);
 	return 0;
 }
