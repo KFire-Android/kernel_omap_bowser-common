@@ -29,7 +29,6 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/omapfb.h>
-#include <linux/cpufreq.h>
 #include <linux/gpio.h>
 #include <linux/wait.h>
 
@@ -1394,11 +1393,6 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 
 	switch (blank) {
 	case FB_BLANK_UNBLANK:
-		/*
-		 * hint cpufreq governor
-		 */
-		send_panel_hint(ON);
-
 		while (num_displays) {
 			display = fbdev->displays[--num_displays];
 			if(!display)
@@ -1450,11 +1444,6 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 			else if (display->driver->disable)
 				display->driver->disable(display);
 		}
-
-		/*
-		 * hint cpufreq governor
-		 */
-		send_panel_hint(OFF);
 
 		break;
 
