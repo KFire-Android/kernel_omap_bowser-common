@@ -79,7 +79,7 @@ static ssize_t rproc_user_read(struct file *filp, char __user *ubuf,
 
 	if (mutex_lock_interruptible(&rproc_user_mutex))
 		return -EINTR;
-	enable = (u8)filp->private_data;
+	enable = secure_cnt ? 1 : 0;
 	if (copy_to_user((void *)ubuf, &enable, sizeof(enable)))
 		ret = -EFAULT;
 	mutex_unlock(&rproc_user_mutex);
