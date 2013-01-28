@@ -2307,12 +2307,6 @@ static int _cyttsp4_xy_worker(struct cyttsp4 *ts)
 		goto _cyttsp4_xy_worker_exit;
 	}
 
-if (GET_NUM_TOUCHES(tt_stat) > 0)
-{
-	/** Boost MPU to get less latency on user action*/
-	cpufreq_boost();
-}
-
 	if (GET_NUM_TOUCHES(tt_stat) > 0) {
 		memcpy(ts->xy_data, ts->xy_data_touch1 + 1,
 			ts->si_ofs.tch_rec_siz);
