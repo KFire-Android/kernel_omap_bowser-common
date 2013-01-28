@@ -267,7 +267,6 @@ struct rproc {
 	const char *firmware;
 	struct module *owner;
 	void *priv;
-	const struct firmware *fw;
 	const struct rproc_ops *ops;
 	struct device *dev;
 	int count;
