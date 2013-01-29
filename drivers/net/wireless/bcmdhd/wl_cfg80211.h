@@ -59,7 +59,7 @@ struct wl_ibss;
 #define WL_DBG_ERR	(1 << 0)
 
 /* 0 invalidates all debug messages.  default is 1 */
-#define WL_DBG_LEVEL 0xFF
+#define WL_DBG_LEVEL 1
 
 #if defined(DHD_DEBUG)
 #define	WL_ERR(args)								\
