@@ -31,7 +31,9 @@
 #include <linux/workqueue.h>
 #include <linux/spinlock.h>
 #include <linux/input/max44007.h>
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 #include <mach/bowser_idme_init.h>
+#endif
 
 static void max44007_shutdown(struct i2c_client *client);
 static int max44007_suspend(struct i2c_client *client, pm_message_t mesg);
@@ -175,6 +177,9 @@ static ssize_t max44007_calibration_store(struct device *dev,
     if(Public_deviceData == NULL){
 	return 0;
     }
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+    max44007_get_trims(Public_deviceData);
+#endif
     max44007_set_cal_trims(Public_deviceData, cal_constant, false);
     return size;
 }
@@ -742,7 +747,11 @@ static int max44007_read_ALS(struct MAX44007Data *device, int *adjusted_lux)
 		return -EINVAL;
 	}
 	mantissa = (data_buffer[0] & 0x0F) << 4 | (data_buffer[1] & 0x0F);
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	*adjusted_lux = ((int)(1 << exponent)) * mantissa *100 / transmittance ;
+#else
 	*adjusted_lux = ((int)(1 << exponent)) * mantissa /transmittance ;
+#endif
 
 	// Lux can be as large as 0x19640
 	dprintk(KERN_INFO "max44007_read_ALS lux=%d\n", *adjusted_lux);
@@ -1600,13 +1609,21 @@ static int max44007_probe(struct i2c_client *client,
 		}
 
 		/* MAX44007 tuning */
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+		transmittance = 160;
+#else
 		transmittance = 4;
+#endif
 		cal_constant.greenConstant = 48;
 		cal_constant.irConstant = 307;
 	} else {
 		/* MAX44009 tuning */
-                transmittance = 6;
-
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+		transmittance = 242;
+		cal_constant.greenConstant = 156;
+		cal_constant.irConstant = 133;
+#else
+		transmittance = 6;
 		if(idme_get_board_revision() > IDME_BOARD_VERSION_EVT3){
 			cal_constant.greenConstant = 174;
 			cal_constant.irConstant = 146;
@@ -1614,6 +1631,7 @@ static int max44007_probe(struct i2c_client *client,
 			cal_constant.greenConstant = 179;
 			cal_constant.irConstant = 176;
 		}
+#endif
 	}
 	//calibration add here
 	max44007_get_trims(deviceData);
@@ -1656,6 +1674,9 @@ static int max44007_probe(struct i2c_client *client,
 		dprintk(KERN_INFO "Light Sensor : max4407_dev register ok.\n");
 	}
 	#endif
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	max44007_sleep(deviceData);
+#endif
 	/* Anvoi, 2011/09/07 for ftm porting } */
 	dprintk(KERN_INFO "max44007_probe completed.\n");
 
