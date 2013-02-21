@@ -54,12 +54,16 @@
 #define PIC12LF1822_UPSTEP        0x4B
 #define PIC12LF1822_STATUS        0x4C
 #define PIC12LF1822_I2CTIMEOUT    0x4D
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#define PROXIMITY_MAX_REGISTER    0x4D
+#else
 #define PIC12LF1822_REFL          0x4E
 #define PIC12LF1822_REFH          0x4F
 #define PIC12LF1822_DEVIATEL      0x50
 #define PIC12LF1822_DEVIATEH      0x51
 #define PIC12LF1822_AVGINTERVAL   0x52
 #define PROXIMITY_MAX_REGISTER    0x52
+#endif
 
 #undef DEBUGD
 //#define DEBUGD
@@ -486,6 +490,7 @@ static ssize_t prox_i2ctimeout_store(struct sys_device *dev,
 
 static SYSDEV_ATTR(i2ctimeout, 0666, prox_i2ctimeout_show, prox_i2ctimeout_store);
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 static ssize_t prox_enable_show(struct sys_device *dev,
 	struct sysdev_attribute *attr, char *buf)
 {
@@ -573,6 +578,7 @@ static ssize_t prox_avgint_store(struct sys_device *dev, struct sysdev_attribute
 }
 
 static SYSDEV_ATTR(avgint, 0666, prox_avgint_show, prox_avgint_store);
+#endif
 
 static struct sysdev_class proximity_sysclass = {
 	.name = "proximity",
@@ -771,6 +777,7 @@ static int pic12lf1822_proximity_probe(struct i2c_client *client,
 	if (error) goto exit;
 	error = sysdev_create_file(&device_proximity, &attr_i2ctimeout);
 	if (error) goto exit;
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	error = sysdev_create_file(&device_proximity, &attr_enable);
 	if (error) goto exit;
 	error = sysdev_create_file(&device_proximity, &attr_ref);
@@ -779,6 +786,7 @@ static int pic12lf1822_proximity_probe(struct i2c_client *client,
 	if (error) goto exit;
 	error = sysdev_create_file(&device_proximity, &attr_avgint);
 	if (error) goto exit;
+#endif
 	return 0;
 
 exit:
@@ -813,10 +821,12 @@ static int pic12lf1822_proximity_remove(struct i2c_client *client)
 	sysdev_remove_file(&device_proximity, &attr_upstep);
 	sysdev_remove_file(&device_proximity, &attr_status);
 	sysdev_remove_file(&device_proximity, &attr_i2ctimeout);
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	sysdev_remove_file(&device_proximity, &attr_enable);
 	sysdev_remove_file(&device_proximity, &attr_ref);
 	sysdev_remove_file(&device_proximity, &attr_deviate);
 	sysdev_remove_file(&device_proximity, &attr_avgint);
+#endif
 	return 0;
 }
 
