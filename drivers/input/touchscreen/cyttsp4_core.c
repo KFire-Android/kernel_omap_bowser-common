@@ -2167,15 +2167,30 @@ static void _cyttsp4_get_mt_touches(struct cyttsp4 *ts, int num_cur_tch)
 					ts->platform_data->frmwrk->abs
 					[(CY_ABS_ID_OST * CY_NUM_ABS_SET) +
 					CY_MIN_OST];
-			#ifdef CY_90_DEG_ROTATION
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_SWAP_XY
 				{
 					int swap = 0;
 
 					swap = touch.abs[CY_TCH_X];
 					touch.abs[CY_TCH_X] = touch.abs[CY_TCH_Y];
-					touch.abs[CY_TCH_Y] = CY_MAXY - swap;
+					touch.abs[CY_TCH_Y] = swap;
 				}
-			#endif
+#endif
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_SWAP_XY
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_FLIP_X
+				touch.abs[CY_TCH_Y] = (CY_MAXY - touch.abs[CY_TCH_Y]);
+#endif
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_FLIP_Y
+				touch.abs[CY_TCH_X] = (CY_MAXX - touch.abs[CY_TCH_X]);
+#endif
+#else
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_FLIP_X
+				touch.abs[CY_TCH_X] = (CY_MAXX - touch.abs[CY_TCH_X]);
+#endif
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_FLIP_Y
+				touch.abs[CY_TCH_Y] = (CY_MAXY - touch.abs[CY_TCH_Y]);
+#endif
+#endif
 
 				if (touch.abs[CY_TCH_E] == CY_EV_LIFTOFF) {
 					/* if lift-off, then skip the touch */

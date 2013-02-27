@@ -24,8 +24,13 @@
 #define CY_MAXX 800
 #define CY_MAXY 1280
 #else
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_TTSP_SWAP_XY
 #define CY_MAXX 1296
 #define CY_MAXY 805
+#else
+#define CY_MAXX 805
+#define CY_MAXY 1296
+#endif
 #endif
 /* Touchscreen Parameters Amazon Jem Rev7*/
 static uint8_t cyttsp4_param_regs[] = {
