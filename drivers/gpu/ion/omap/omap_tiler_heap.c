@@ -489,7 +489,12 @@ struct ion_heap *omap_tiler_heap_create(struct ion_platform_heap *data)
 	if (omap_total_ram_size() <= SZ_512M)
 		use_dynamic_pages = true;
 	else
+// Use dynamic memory allocations
+#if 1
+		use_dynamic_pages = true;
+#else
 		use_dynamic_pages = false;
+#endif
 
 	return &heap->heap;
 }
