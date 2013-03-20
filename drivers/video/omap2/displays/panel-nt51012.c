@@ -508,9 +508,9 @@ static int nt51012_probe(struct omap_dss_device *dssdev)
 	return 0;
 
 err_vc1:
-	omap_dsi_release_vc(dssdev, &d2d->channel1);
+	omap_dsi_release_vc(dssdev, d2d->channel1);
 err_vc0:
-	omap_dsi_release_vc(dssdev, &d2d->channel0);
+	omap_dsi_release_vc(dssdev, d2d->channel0);
 err_wq:
 	destroy_workqueue(d2d->workq);
 err_mem:
