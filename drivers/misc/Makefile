@@ -61,3 +61,4 @@ obj-$(CONFIG_CACHE2DMANAGER)	+= cache-2dmanager/
 obj-$(CONFIG_INV_SENSORS)       += inv_mpu/
 #JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 }
 obj-$(CONFIG_MAX1161X)		+= max1161x.o
+obj-$(CONFIG_TATE_HALL_SENSORS) += hall.o
