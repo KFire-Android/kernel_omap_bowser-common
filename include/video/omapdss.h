@@ -762,6 +762,7 @@ struct omap_dss_driver {
 			  int modedb_len);
 	int (*set_mode)(struct omap_dss_device *dssdev,
 			struct fb_videomode *mode);
+	void (*reset_panel)(struct omap_dss_device *dssdev);
 
 	/* for wrapping around state changes */
 	void (*disable_orig)(struct omap_dss_device *display);
@@ -831,6 +832,7 @@ void omap_dsi_release_vc(struct omap_dss_device *dssdev, int channel);
 int omapdss_dsi_display_enable(struct omap_dss_device *dssdev);
 void omapdss_dsi_display_disable(struct omap_dss_device *dssdev,
 		bool disconnect_lanes, bool enter_ulps);
+int omapdss_dsi_display_reset(struct omap_dss_device *dssdev);
 
 int omapdss_dpi_display_enable(struct omap_dss_device *dssdev);
 void omapdss_dpi_display_disable(struct omap_dss_device *dssdev);

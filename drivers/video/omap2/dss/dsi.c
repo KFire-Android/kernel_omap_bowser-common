@@ -660,7 +660,10 @@ static void dsi_handle_irq_errors(struct platform_device *dsidev, u32 irqstatus,
 		u32 *vcstatus, u32 ciostatus)
 {
 	struct dsi_data *dsi = dsi_get_dsidrv_data(dsidev);
+	struct omap_dss_device *dssdev;
 	int i;
+
+	dssdev = dsi->vc[0].dssdev;
 
 	if (irqstatus & DSI_IRQ_ERROR_MASK) {
 		DSSERR("DSI error, irqstatus %x\n", irqstatus);
@@ -668,6 +671,8 @@ static void dsi_handle_irq_errors(struct platform_device *dsidev, u32 irqstatus,
 		spin_lock(&dsi->errors_lock);
 		dsi->errors |= irqstatus & DSI_IRQ_ERROR_MASK;
 		spin_unlock(&dsi->errors_lock);
+		if (dssdev->driver->reset_panel)
+			dssdev->driver->reset_panel(dssdev);
 	} else if (debug_irq) {
 		print_irq_status(irqstatus);
 	}
@@ -677,6 +682,8 @@ static void dsi_handle_irq_errors(struct platform_device *dsidev, u32 irqstatus,
 			DSSERR("DSI VC(%d) error, vc irqstatus %x\n",
 				       i, vcstatus[i]);
 			print_irq_status_vc(i, vcstatus[i]);
+			if (dssdev->driver->reset_panel)
+				dssdev->driver->reset_panel(dssdev);
 		} else if (debug_irq) {
 			print_irq_status_vc(i, vcstatus[i]);
 		}
@@ -685,6 +692,8 @@ static void dsi_handle_irq_errors(struct platform_device *dsidev, u32 irqstatus,
 	if (ciostatus & DSI_CIO_IRQ_ERROR_MASK) {
 		DSSERR("DSI CIO error, cio irqstatus %x\n", ciostatus);
 		print_irq_status_cio(ciostatus);
+		if (dssdev->driver->reset_panel)
+			dssdev->driver->reset_panel(dssdev);
 	} else if (debug_irq) {
 		print_irq_status_cio(ciostatus);
 	}
@@ -5011,6 +5020,65 @@ err_start_dev:
 	return r;
 }
 EXPORT_SYMBOL(omapdss_dsi_display_enable);
+
+int omapdss_dsi_display_reset(struct omap_dss_device *dssdev)
+{
+	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
+	struct dsi_data *dsi = dsi_get_dsidrv_data(dsidev);
+	int r = 0;
+
+	DSSERR(KERN_INFO "dsi_display_reset\n");
+
+	WARN_ON(!dsi_bus_is_locked(dsidev));
+
+	mutex_lock(&dsi->lock);
+
+	r = omap_dss_start_device(dssdev);
+	if (r) {
+		DSSERR("failed to start device\n");
+		goto err_start_dev;
+	}
+
+	r = dsi_runtime_get(dsidev);
+	if (r)
+		goto err_get_dsi;
+
+	dsi_enable_pll_clock(dsidev, 1);
+
+	/* This is needed to reset DSI engine in case of ESD failure */
+	/* Soft reset */
+	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 1, 1);
+	_dsi_wait_reset(dsidev);
+
+	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 2, 2, 1);
+
+	_dsi_initialize_irq(dsidev);
+
+	r = dsi_display_init_dispc(dssdev);
+	if (r)
+		goto err_init_dispc;
+
+	r = dsi_display_init_dsi(dssdev);
+	if (r)
+		goto err_init_dsi;
+
+	mutex_unlock(&dsi->lock);
+
+	return 0;
+
+err_init_dsi:
+	dsi_display_uninit_dispc(dssdev);
+err_init_dispc:
+	dsi_enable_pll_clock(dsidev, 0);
+	dsi_runtime_put(dsidev);
+err_get_dsi:
+	omap_dss_stop_device(dssdev);
+err_start_dev:
+	mutex_unlock(&dsi->lock);
+	DSSERR("dsi_display_reset FAILED\n");
+	return r;
+}
+EXPORT_SYMBOL(omapdss_dsi_display_reset);
 
 void omapdss_dsi_display_disable(struct omap_dss_device *dssdev,
 		bool disconnect_lanes, bool enter_ulps)
