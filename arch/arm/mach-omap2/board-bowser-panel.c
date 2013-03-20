@@ -92,16 +92,19 @@ static struct gpio tablet_hdmi_gpios[] = {
 static struct panel_board_data bowser_dsi_panel = {
 		.lcd_en_gpio = GPIO_LCD_ENABLE,
 		.reset_gpio	= GPIO_D2L_RESET,
+		.cabc_en_gpio = -1,
 };
 #elif defined (CONFIG_PANEL_NT71391_HYDIS)
 static struct panel_board_data bowser_dsi_panel = {
 		.lcd_en_gpio = GPIO_LCD_ENABLE,
 		.reset_gpio = -1,
+		.cabc_en_gpio = -1,
 };
 #elif defined (CONFIG_PANEL_NT51012_LG)
 static struct panel_board_data bowser_dsi_panel = {
 		.lcd_en_gpio = GPIO_LCD_ENABLE,
 		.reset_gpio = -1,
+		.cabc_en_gpio = GPIO_BACKLIGHT_CABC_EN,
 };
 #endif
 
@@ -269,8 +272,16 @@ static struct omap_dss_device bowser_lcd_device = {
 
 		.type = OMAP_DSS_DSI_TYPE_VIDEO_MODE,
 	},
-
-#error Need .panel timings, width & height_in_um
+	.panel = {
+		.acbi = 0,
+		.acb = 40,
+		.timings = {
+			.x_res = 800,
+			.y_res = 1280,
+		},
+		.width_in_um = 94200,
+		.height_in_um = 150720,
+	},
 
 	.clocks = {
 		.dispc = {
@@ -283,18 +294,22 @@ static struct omap_dss_device bowser_lcd_device = {
 		},
 
 		.dsi = {
-			.regn           = 38,	/* DSI_PLL_REGN */
-			.regm           = 394,	/* DSI_PLL_REGM */
+			.regn           = 16,	/* DSI_PLL_REGN */
+			.regm           = 178,	/* DSI_PLL_REGM */
 			.regm_dispc     = 6,	/* PLL_CLK1 (M4) */
-			.regm_dsi       = 9,	/* PLL_CLK2 (M5) */
-			.lp_clk_div     = 5,	/* PLDIV */
+			.regm_dsi       = 5,	/* PLL_CLK2 (M5) */
+			.lp_clk_div     = 9,	/* PLDIV */
 			.offset_ddr_clk = 0,
 			.dsi_fclk_src   = OMAP_DSS_CLK_SRC_DSI_PLL_HSDIV_DSI,
 		},
 	},
 
 	.channel = OMAP_DSS_CHANNEL_LCD,
+#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+	.skip_init = true,
+#else
 	.skip_init = false,
+#endif
 
 	.platform_enable = NULL,
 	.platform_disable = NULL,
