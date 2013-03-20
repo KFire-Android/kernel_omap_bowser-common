@@ -315,7 +315,9 @@ EXPORT_SYMBOL(bowser_wifi_irq_num);
 
 void bowser_wifi_mux_init(void)
 {
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	u32 val = 0;
+#endif
 
 	omap_mux_init_gpio(GPIO_WLAN_HOST_WAKE,
 			OMAP_MUX_MODE3 | OMAP_PIN_INPUT | OMAP_PIN_OFF_WAKEUPENABLE | OMAP_WAKEUP_EVENT);
@@ -336,6 +338,7 @@ void bowser_wifi_mux_init(void)
 				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
 
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	/* Change slew rate on SDIO Signals */
 
 	val = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_SMART3IO_PADCONF_1);
@@ -345,7 +348,7 @@ void bowser_wifi_mux_init(void)
 	val = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_SMART3IO_PADCONF_2);
 	val |= (1 << 15);
 	omap4_ctrl_pad_writel(val, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_SMART3IO_PADCONF_2);
-
+#endif
 
 	/* WIFI related GPIOs */
 	if (gpio_request(GPIO_WLAN_EN, "bcm43239") ||
