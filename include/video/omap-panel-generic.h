@@ -6,6 +6,7 @@ struct panel_board_data {
 	int y_res;
 	int reset_gpio;
 	int lcd_en_gpio;
+	int cabc_en_gpio;
 };
 
 #endif
