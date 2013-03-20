@@ -279,8 +279,12 @@ obj-$(CONFIG_MACH_OMAP_4430SDP)		+= board-4430sdp.o \
 					   hsmmc.o \
 					   omap_phy_internal.o \
 					   omap4_apps_brd_id.o
-obj-$(CONFIG_MACH_OMAP4_BOWSER)		+= board-bowser.o \
-					   board-bowser-bluetooth.o \
+ifneq ($(CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE),)
+obj-$(CONFIG_MACH_OMAP4_BOWSER)		+= board-bowser-tate.o
+else
+obj-$(CONFIG_MACH_OMAP4_BOWSER)		+= board-bowser-jem.o
+endif
+obj-$(CONFIG_MACH_OMAP4_BOWSER)		+= board-bowser-bluetooth.o \
 					   board-blaze-touch.o \
 					   board-bowser-panel.o \
 					   board-blaze-keypad.o \
