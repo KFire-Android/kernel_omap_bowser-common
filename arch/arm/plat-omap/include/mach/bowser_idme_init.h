@@ -77,4 +77,6 @@ int is_wifi_semco(void);
 int is_wifi_usi(void);
 int idme_is_good_panel(void);
 #endif
+int is_radley_device(void);
+int board_has_usb_host(void);
 #endif

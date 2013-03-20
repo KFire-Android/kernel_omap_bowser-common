@@ -364,6 +364,21 @@ static int inline is_bowser_board_type(const unsigned char *pbid)
         return 0;
 }
 
+int is_radley_device(void)
+{
+        if (strncmp(RADLEY_BOARD_TYPE, &system_rev16[BOARD_TYPE_OFFSET], BOARD_TYPE_LEN) == 0 )
+                return 1;
+        return 0;
+}
+
+int board_has_usb_host(void)
+{
+        if (is_radley_device()) return 1;
+        return 0;
+}
+
+
+
 /* 
    my own strtol conversion instead of using kernel interface which
    is more overhead
@@ -495,6 +510,10 @@ char *idme_get_board_type_string(void)
 		  prod_name_extra_index = PROD_NAME_EXTRA_ENG;
 		  return "Tate EVT2.1\0";
                 case 5: return "Tate EVT3\0";
+                case 6: return "Tate EVT3HS2\0";
+                case 7: return "Tate DVT\0";
+                case 8: return "Tate PVT\0";
+		default: return "Unknown\0";
                 }
         case BOARD_TYPE_RADLEY:
                 switch(idme_get_board_revision()){
