@@ -25,7 +25,6 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
-#include <linux/trapz.h>
 
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
@@ -842,10 +841,6 @@ static void mxt_input_touch(struct mxt_data *data, u8 *message)
 	}
 
 	if (data->prev_x[id] != x || data->prev_y[id] != y) {
-		TRAPZ_DESCRIBE(TRAPZ_KERN_INP_TOUCH, AtmelTouchEvent,
-			"Touch event in Atmel MXT touch driver");
-		TRAPZ_LOG_PRINTF(TRAPZ_LOG_DEBUG, 0, TRAPZ_KERN_INP_TOUCH, AtmelTouchEvent,
-			"X=%d Y=%d", x, y);
 		data->prev_x[id] = x;
 		data->prev_y[id] = y;
 	}
