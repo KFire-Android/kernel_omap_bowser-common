@@ -72,7 +72,7 @@
 #include <sound/wm8962.h>
 
 #include "board-bowser.h"
-#include "omap4_ion.h"
+#include <mach/omap4_ion.h>
 #include "mux.h"
 #include "hsmmc.h"
 #include "timer-gp.h"
