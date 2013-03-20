@@ -25,28 +25,10 @@
 #define MXT_ROTATED_180		0x6
 #define MXT_DIAGONAL_COUNTER	0x7
 
-enum {
-	ATMEL_TOUCH_SENSOR_VENDOR_TPK = 0, 
-	ATMEL_TOUCH_SENSOR_VENDOR_WINTEL,
-        ATMEL_TOUCH_SENSOR_VENDOR_WINTEK,
-        ATMEL_TOUCH_SENSOR_VENDOR_CMI,
-        ATMEL_TOUCH_SENSOR_VENDOR_HANNSTOUCH,
-	ATMEL_TOUCH_SENSOR_VENDOR_MAX
-};
-
 /* The platform data for the Atmel maXTouch touchscreen driver */
 struct mxt_platform_data {
-	unsigned int x_line;
-	unsigned int y_line;
-	unsigned int x_size;
-	unsigned int y_size;
-	unsigned int blen;
-	unsigned int threshold;
-	unsigned int voltage;
-	unsigned char orient;
-	unsigned long irqflags;
 	u8(*read_chg) (void);
-	unsigned int (*read_sensor_vendor) (void);
+	int reset_gpio;
 };
 
 #endif /* __LINUX_ATMEL_MXT_TS_H */
