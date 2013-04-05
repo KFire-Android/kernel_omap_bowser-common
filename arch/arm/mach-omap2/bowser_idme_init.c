@@ -39,6 +39,7 @@
 #define IDME_PROCNAME_WIFIMODULE "wifi_module"
 #define IDME_PROCNAME_TOUCHSTATUS "touch"
 #endif
+#define IDME_PROCNAME_GYROCAL	"gyrocal"
 #define IDME_PROCNAME_PROD_NAME	"product_name"
 #define IDME_PROCNAME_PROD_NAME_EXTRA	"product_name_extra"
 #define IDME_PROCNAME_PRODUCTID	"productid"
@@ -177,6 +178,17 @@ static int proc_touch_status_read(char *page, char **start, off_t off, int count
 }
 #endif
 
+static int proc_gyrocal_read(char *page, char **start, off_t off, int count,
+				int *eof, void *data, char *id)
+{
+	unsigned int len = 36;
+	/* Copy raw data, instead of a string.*/
+	memcpy(page, system_gyro_cal, len);
+	*eof = 1;
+
+	return len;
+}
+
 static int proc_prod_name_func(char *page, char **start, off_t off, int count,
 				int *eof, void *data, char *id)
 {
@@ -242,6 +254,7 @@ static int __init bowser_idme_init_proc(void)
 	struct proc_dir_entry *proc_postmode = create_proc_entry(IDME_PROCNAME_POSTMODE, S_IRUGO, NULL);
 	struct proc_dir_entry *proc_bootcount = create_proc_entry(IDME_PROCNAME_BOOTCOUNT, S_IRUGO, NULL);
 	struct proc_dir_entry *proc_productid = create_proc_entry(IDME_PROCNAME_PRODUCTID, S_IRUGO, NULL);
+	struct proc_dir_entry *proc_gyrocal = create_proc_entry(IDME_PROCNAME_GYROCAL, S_IRUGO, NULL);
 
 #ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	struct proc_dir_entry *proc_wifi_module = create_proc_entry(IDME_PROCNAME_WIFIMODULE, S_IRUGO, NULL);
@@ -312,6 +325,12 @@ static int __init bowser_idme_init_proc(void)
 		proc_touch_status->write_proc = NULL;
 	}
 #endif
+
+	if (proc_gyrocal != NULL) {
+		proc_gyrocal->data = NULL;
+		proc_gyrocal->read_proc = proc_gyrocal_read;
+		proc_gyrocal->write_proc = NULL;
+	}
 
         if (proc_prod_name != NULL) {
                 proc_prod_name->data = NULL;

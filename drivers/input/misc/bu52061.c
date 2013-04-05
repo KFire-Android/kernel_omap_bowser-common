@@ -23,8 +23,10 @@
 #define KEY_PRESSED 1
 #define KEY_RELEASED 0
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 #define TIMEOUT_VALUE 1200  // mini-second
 struct timer_list hall_timer;
+#endif
 
 struct _bu52061_platform_data *g_bu52061_data = NULL;
 
@@ -187,6 +189,7 @@ static void hall_handle_event(void)
   }
 }
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 static void hall_timeout_report(unsigned long arg)
 {
   hall_handle_event();
@@ -201,12 +204,15 @@ static void hall_init_timer(void)
   add_timer(&hall_timer);
   printk(KERN_DEBUG "BU52061 hall_init_timer Done\n");
 }
+#endif
 
 static void bu52061_irq_work(struct work_struct *work)
 {
   hall_handle_event();
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
   mod_timer(&hall_timer, jiffies + ((TIMEOUT_VALUE*HZ)/1000));
   wake_lock_timeout(&g_bu52061_data->wake_lock, msecs_to_jiffies(TIMEOUT_VALUE));
+#endif
 }
 
 static irqreturn_t bu52061_interrupt(int irq, void *dev_id)
@@ -312,9 +318,11 @@ static int __devinit bu52061_probe(struct platform_device *pdev)
     goto fail3;	
   }
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
   hall_init_timer();
 #if defined(CONFIG_HAS_WAKELOCK)
   wake_lock_init(&g_bu52061_data->wake_lock, WAKE_LOCK_SUSPEND, "Hall_Sensor");
+#endif
 #endif
 
   printk(KERN_INFO "BU52061 Probe OK\n");	
@@ -344,16 +352,18 @@ static int __devexit bu52061_remove(struct platform_device *pdev)
   unregister_early_suspend(&g_bu52061_data->early_suspend);
 #endif
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
   del_timer_sync(&hall_timer);
 #if defined(CONFIG_HAS_WAKELOCK)
   wake_lock_destroy(&g_bu52061_data->wake_lock);
 #endif
-
+#endif
   kfree(g_bu52061_data);
 
   return 0;
 }
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 static void bu52061_shutdown(struct platform_device *pdev)
 {
   struct _bu52061_platform_data *bu52061_platform_data= pdev->dev.platform_data;
@@ -361,6 +371,7 @@ static void bu52061_shutdown(struct platform_device *pdev)
   free_irq(bu52061_platform_data->irq, NULL);
   cancel_work_sync(&g_bu52061_data->irq_work);
 }
+#endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void bu52061_early_suspend(struct early_suspend *es)
@@ -377,6 +388,13 @@ static void bu52061_late_resume(struct early_suspend *es)
 
 static int bu52061_suspend(struct device *dev)
 {
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifndef CONFIG_HAS_EARLYSUSPEND
+  gHallEventInfo.bl_status = BL_OFF;
+#endif
+#else
+  gHallEventInfo.bl_status = BL_OFF;
+#endif
   gHallEventInfo.bl_status = BL_OFF;
   printk(KERN_INFO "bu52061_suspend\n");
   return 0;
@@ -385,8 +403,14 @@ static int bu52061_suspend(struct device *dev)
 
 static int bu52061_resume(struct device *dev)
 {
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifndef CONFIG_HAS_EARLYSUSPEND
+  gHallEventInfo.bl_status = BL_ON;
+#endif
+#else
   if(gpio_get_value(HALL_EFFECT) == HALL_OPENED)
     gHallEventInfo.bl_status = BL_ON;
+#endif
 
   printk(KERN_INFO "bu52061_resume\n");
   return 0;
@@ -401,7 +425,9 @@ static const struct dev_pm_ops bu52061_dev_pm_ops = {
 static struct platform_driver bu52061_device_driver = {
   .probe    = bu52061_probe,
   .remove   = bu52061_remove,
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
   .shutdown = bu52061_shutdown,
+#endif
   .driver   = {
     .name   = "bu52061",
     .owner  = THIS_MODULE,

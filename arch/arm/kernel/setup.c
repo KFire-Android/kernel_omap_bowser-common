@@ -126,6 +126,9 @@ EXPORT_SYMBOL(system_productid);
 
 #endif //CONFIG_MACH_OMAP4_BOWSER
 
+unsigned char system_gyro_cal[GYROCAL_SIZE+1];
+EXPORT_SYMBOL(system_gyro_cal);
+
 #ifdef MULTI_CPU
 struct processor processor __read_mostly;
 #endif
@@ -768,6 +771,32 @@ static int __init parse_tag_productid(const struct tag *tag)
 __tagtable(ATAG_PRODUCTID, parse_tag_productid);
 
 #endif //CONFIG_MACH_OMAP4_BOWSER
+
+static int __init parse_tag_gyrocal(const struct tag *tag)
+{
+	int j;
+	memset(system_gyro_cal, 0, GYROCAL_SIZE+1);
+        memcpy(system_gyro_cal, tag->u.gyrocal.gyrocal_data, GYROCAL_SIZE);
+#if 1
+        printk("ATAGS:gyro_cal_size=%d. \n",GYROCAL_SIZE);
+
+        printk("        0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f");
+
+        for ( j=0 ; j < GYROCAL_SIZE ; j++){
+
+             if( j%16 == 0 ){
+                     printk("\n  %03X:", j/16);
+                     printk(" %02X", system_gyro_cal[j]);
+             }else{
+                     printk(" %02X", system_gyro_cal[j]);
+             }
+        }
+        printk("\n\n");
+#endif
+	return 0;
+}
+
+__tagtable(ATAG_GYROCAL, parse_tag_gyrocal);
 
 static int __init parse_tag_cmdline(const struct tag *tag)
 {

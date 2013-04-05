@@ -96,6 +96,8 @@ extern unsigned char system_bt_mac_addr[MAC_ADDR_SIZE+1];
 extern unsigned char system_productid[PRODUCTID_SIZE+1];
 
 #endif //CONFIG_MACH_OMAP4_BOWSER
+#define GYROCAL_SIZE	36
+extern unsigned char system_gyro_cal[GYROCAL_SIZE+1];
 
 struct pt_regs;
 

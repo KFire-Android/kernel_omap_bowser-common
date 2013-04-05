@@ -163,6 +163,14 @@ struct tag_productid {
 
 #endif // (CONFIG_MACH_OMAP4_BOWSER)
 
+/* Gyro calibration variables */
+#define ATAG_GYROCAL	0x5441000e
+
+struct tag_gyrocal {
+   u8 gyrocal_data[36];
+};
+
+
 /* acorn RiscPC specific information */
 #define ATAG_ACORN	0x41000101
 
@@ -196,6 +204,7 @@ struct tag {
 		struct tag_bootmode	bootmode;
 		struct tag_productid	productid;
 #endif //CONFIG_MACH_OMAP4_BOWSER
+		struct tag_gyrocal	gyrocal;
 		struct tag_videolfb	videolfb;
 		struct tag_cmdline	cmdline;
 
