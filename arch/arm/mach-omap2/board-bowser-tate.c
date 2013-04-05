@@ -802,10 +802,12 @@ static struct i2c_board_info __initdata sdp4430_i2c_3_boardinfo[] = {
 		I2C_BOARD_INFO("bq27541", 0x55),
 	},
 #endif
+#if 0
 #if defined(CONFIG_SENSORS_LM75)
 	{
 		I2C_BOARD_INFO("tmp103", 0x70),
 	},
+#endif
 #endif
 #if defined(CONFIG_CHARGER_SMB347)
 	{
@@ -1471,7 +1473,7 @@ static void __init omap_4430sdp_reserve(void)
 	omap_reserve();
 }
 
-MACHINE_START(OMAP4_BOWSER, "OMAP4 Bowser4 board")
+MACHINE_START(OMAP4_BOWSER, "OMAP4 Bowser board")
 	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
 	.boot_params	= 0x80000100,
 	.reserve	= omap_4430sdp_reserve,
