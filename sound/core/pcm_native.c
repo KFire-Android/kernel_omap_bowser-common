@@ -1341,6 +1341,7 @@ static int snd_pcm_prepare(struct snd_pcm_substream *substream,
 	struct snd_card *card = substream->pcm->card;
 	int f_flags;
 
+snd_printd(KERN_ERR "[SND_DEBUG] pcm_native.c::snd_pcm_prepare\n");
 	if (file)
 		f_flags = file->f_flags;
 	else
@@ -1562,6 +1563,16 @@ static struct file *snd_pcm_file_fd(int fd)
 	file = fget(fd);
 	if (!file)
 		return NULL;
+
+#ifdef CONFIG_SND_DEBUG
+	char buf[64], *cp;
+
+	cp = d_path(&file->f_path, buf, sizeof(buf));
+	if (!IS_ERR(cp))
+		snd_printd(KERN_ERR "[SND_DEBUG] pcm_native.c::snd_pcm_file_fd(%s)\n", cp);
+	else
+		snd_printd(KERN_ERR "[SND_DEBUG] pcm_native.c::snd_pcm_file_fd(null)\n");
+#endif
 	inode = file->f_path.dentry->d_inode;
 	if (!S_ISCHR(inode->i_mode) ||
 	    imajor(inode) != snd_major) {
