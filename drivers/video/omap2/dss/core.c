@@ -35,11 +35,13 @@
 
 #include <video/omapdss.h>
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 #ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
 #include <linux/clk.h>
 #include <plat/clock.h>
 #include <linux/delay.h>
 #endif /* CONFIG_FB_OMAP_BOOTLOADER_INIT */
+#endif
 
 #include "dss.h"
 #include "dss_features.h"
@@ -209,10 +211,12 @@ static int omap_dss_probe(struct platform_device *pdev)
 	int r;
 	int i;
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 #ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
 	static int first_boot = 1;
 	struct clk *iclk;
 #endif /* CONFIG_FB_OMAP_BOOTLOADER_INIT */
+#endif
 
 	core.pdev = pdev;
 
@@ -284,6 +288,7 @@ static int omap_dss_probe(struct platform_device *pdev)
 
 //		if (def_disp_name && strcmp(def_disp_name, dssdev->name) == 0)
 //			pdata->default_device = dssdev;
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 #ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
 	if (unlikely(first_boot != 0)) {
 		iclk = clk_get(NULL, "ick");
@@ -294,6 +299,7 @@ static int omap_dss_probe(struct platform_device *pdev)
 		first_boot = 0;
 	}
 #endif /* CONFIG_FB_OMAP_BOOTLOADER_INIT */
+#endif
 
 	return 0;
 

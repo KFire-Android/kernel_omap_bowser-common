@@ -186,6 +186,9 @@ static void dispc_save_context(void)
 	SR(DIVISORo(OMAP_DSS_CHANNEL_LCD));
 	if (dss_has_feature(FEAT_GLOBAL_ALPHA))
 		SR(GLOBAL_ALPHA);
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	SR(GLOBAL_BUFFER);
+#endif
 	SR(SIZE_MGR(OMAP_DSS_CHANNEL_DIGIT));
 	SR(SIZE_MGR(OMAP_DSS_CHANNEL_LCD));
 	if (dss_has_feature(FEAT_MGR_LCD2)) {
@@ -340,6 +343,9 @@ static void dispc_restore_context(void)
 	RR(DIVISORo(OMAP_DSS_CHANNEL_LCD));
 	if (dss_has_feature(FEAT_GLOBAL_ALPHA))
 		RR(GLOBAL_ALPHA);
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	RR(GLOBAL_BUFFER);
+#endif
 	RR(SIZE_MGR(OMAP_DSS_CHANNEL_DIGIT));
 	RR(SIZE_MGR(OMAP_DSS_CHANNEL_LCD));
 	if (dss_has_feature(FEAT_MGR_LCD2)) {
@@ -484,6 +490,9 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	u32 val, burstsize, doublestride;
 	u32 rotation, bursttype, color_mode;
 	struct dispc_config dispc_reg_config;
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	u32 dispc_buffer_sizes;
+#endif
 
 	if (width >= 1920)
 		return 1500;
@@ -521,6 +530,7 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	dispc_reg_config.rotation = rotation;
 
 	/* DMA buffer allications - assuming reset values */
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	dispc_reg_config.gfx_top_buffer = 0;
 	dispc_reg_config.gfx_bottom_buffer = 0;
 	dispc_reg_config.vid1_top_buffer = 1;
@@ -531,6 +541,19 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	dispc_reg_config.vid3_bottom_buffer = 3;
 	dispc_reg_config.wb_top_buffer = 4;
 	dispc_reg_config.wb_bottom_buffer = 4;
+#else
+	dispc_buffer_sizes = dispc_read_reg(DISPC_GLOBAL_BUFFER);
+	dispc_reg_config.gfx_top_buffer = (dispc_buffer_sizes >> 0) & 7 ;
+	dispc_reg_config.gfx_bottom_buffer = (dispc_buffer_sizes >> 3) & 7;
+	dispc_reg_config.vid1_top_buffer = (dispc_buffer_sizes >> 6) & 7;
+	dispc_reg_config.vid1_bottom_buffer = (dispc_buffer_sizes >> 9) & 7;
+	dispc_reg_config.vid2_top_buffer = (dispc_buffer_sizes >> 12) & 7;
+	dispc_reg_config.vid2_bottom_buffer = (dispc_buffer_sizes >> 15) & 7;
+	dispc_reg_config.vid3_top_buffer = (dispc_buffer_sizes >> 18) & 7;
+	dispc_reg_config.vid3_bottom_buffer = (dispc_buffer_sizes >> 21) & 7;
+	dispc_reg_config.wb_top_buffer = (dispc_buffer_sizes >> 24) & 7;
+	dispc_reg_config.wb_bottom_buffer = (dispc_buffer_sizes >> 27) & 7;
+#endif
 
 	/* antiFlicker is off */
 	dispc_reg_config.antiflicker = 0;
@@ -2301,10 +2324,11 @@ int dispc_scaling_decision(u16 width, u16 height,
 		   b. We look for Functional Clock: 192 MHz and sink device pixel clock e.g: VGA size: 25175000 and make decision
 		   c. We do not decimate if the input width (1920) divided by output width (e.g: 640) is too high
            Setting the "maxdownscale" parameter to 2 takes care of doing Decimation Process */
-
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
         if( channel == OMAP_DSS_CHANNEL_DIGIT && ((fclk_max / dispc_pclk_rate(channel)) > 6) && (width / out_width) < 4) {
                 maxdownscale = 2;
         }
+#endif
 
 	while (1) {
 		if (x < min_x_decim || x > max_x_decim ||
@@ -2955,7 +2979,7 @@ static void dispc_enable_lcd_out(enum omap_channel channel, bool enable)
 			DSSERR("failed to unregister FRAMEDONE isr\n");
 	}
 
-
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_DIGIT)) {
 		if (!enable) {
 			disable_irq(dispc.irq);
@@ -2963,6 +2987,7 @@ static void dispc_enable_lcd_out(enum omap_channel channel, bool enable)
 			enable_irq(dispc.irq);
 		}
 	}
+#endif
 }
 
 static void _enable_digit_out(bool enable)
@@ -2980,8 +3005,10 @@ static void dispc_enable_digit_out(enum omap_display_type type, bool enable)
 
 	if (enable) {
 		unsigned long flags;
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 		if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_LCD))
 			enable_irq(dispc.irq);
+#endif
 
 		/* When we enable digit output, we'll get an extra digit
 		 * sync lost interrupt, that we need to ignore */
@@ -3317,6 +3344,7 @@ void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 		REG_FLD_MOD(DISPC_CONTROL, code, 9, 8);
 }
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 void dispc_set_dithering(enum omap_channel channel)
 {
 	int temp;
@@ -3329,6 +3357,7 @@ void dispc_set_dithering(enum omap_channel channel)
 		REG_FLD_MOD(DISPC_CONTROL, temp, 7, 7);
 	}
 }
+#endif
 
 void dispc_set_parallel_interface_mode(enum omap_channel channel,
 		enum omap_parallel_interface_mode mode)
@@ -3463,6 +3492,7 @@ void dispc_set_lcd_timings(enum omap_channel channel,
 static void dispc_set_lcd_divisor(enum omap_channel channel, u16 lck_div,
 		u16 pck_div)
 {
+//FIXME-HASH: Double check this for Tate
 	BUG_ON(lck_div < 1);
 	BUG_ON(pck_div < 1);
 
@@ -3827,6 +3857,7 @@ static void _dispc_set_pol_freq(enum omap_channel channel, bool onoff, bool rf,
 	dispc_write_reg(DISPC_POL_FREQ(channel), l);
 }
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 static void dispc_get_pol_freq(enum omap_channel channel,
 			enum omap_panel_config *config, u8 *acbi, u8 *acb)
 {
@@ -3849,6 +3880,7 @@ static void dispc_get_pol_freq(enum omap_channel channel,
 	*acbi = FLD_GET(l, 11, 8);
 	*acb = FLD_GET(l, 7, 0);
 }
+#endif
 
 void dispc_set_pol_freq(enum omap_channel channel,
 		enum omap_panel_config config, u8 acbi, u8 acb)
@@ -3928,6 +3960,7 @@ int dispc_set_clock_div(enum omap_channel channel,
 	DSSDBG("lck = %lu (%u)\n", cinfo->lck, cinfo->lck_div);
 	DSSDBG("pck = %lu (%u)\n", cinfo->pck, cinfo->pck_div);
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	/* In case DISPC_CORE_CLK == PCLK, IPC must work on rising edge */
 	if (dss_has_feature(FEAT_CORE_CLK_DIV) &&
 			(cinfo->lck_div * cinfo->pck_div == 1)) {
@@ -3937,6 +3970,7 @@ int dispc_set_clock_div(enum omap_channel channel,
 		config |= OMAP_DSS_LCD_IPC;
 		dispc_set_pol_freq(channel, config, acbi, acb);
 	}
+#endif
 
 	dispc_set_lcd_divisor(channel, cinfo->lck_div, cinfo->pck_div);
 
@@ -4576,6 +4610,7 @@ static void _omap_dispc_initial_config(void)
 	u32 l;
 
 	/* Exclusively enable DISPC_CORE_CLK and set divider to 1 */
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	if (dss_has_feature(FEAT_CORE_CLK_DIV)) {
 		l = dispc_read_reg(DISPC_DIVISOR);
 		/* Use DISPC_DIVISOR.LCD, instead of DISPC_DIVISOR1.LCD */
@@ -4583,6 +4618,7 @@ static void _omap_dispc_initial_config(void)
 		l = FLD_MOD(l, 1, 23, 16);
 		dispc_write_reg(DISPC_DIVISOR, l);
 	}
+#endif
 
 	/* for OMAP4 ERRATUM xxxx: Mstandby and disconnect protocol issue */
 	if (cpu_is_omap44xx()) {
@@ -4591,17 +4627,21 @@ static void _omap_dispc_initial_config(void)
 	}
 
 	/* FUNCGATED */
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	if (dss_has_feature(FEAT_FUNCGATED))
 		REG_FLD_MOD(DISPC_CONFIG, 1, 9, 9);
 
 	REG_FLD_MOD(DISPC_CONFIG, 1, 17, 17);
+#endif
 
 	/* L3 firewall setting: enable access to OCM RAM */
 	/* XXX this should be somewhere in plat-omap */
 	if (cpu_is_omap24xx())
 		__raw_writel(0x402000b0, OMAP2_L3_IO_ADDRESS(0x680050a0));
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	dispc_set_loadmode(OMAP_DSS_LOAD_FRAME_ONLY);
+#endif
 
 	dispc_read_plane_fifo_sizes();
 

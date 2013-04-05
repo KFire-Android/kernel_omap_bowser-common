@@ -685,7 +685,6 @@ skip_map1d:
 			}
 			else
 				ovl_use_mask[ch] = ovl_new_use_mask[ch];
-
 			continue;
 		}
 
