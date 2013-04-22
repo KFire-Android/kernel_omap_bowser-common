@@ -3005,10 +3005,8 @@ static void dispc_enable_digit_out(enum omap_display_type type, bool enable)
 
 	if (enable) {
 		unsigned long flags;
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 		if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_LCD))
 			enable_irq(dispc.irq);
-#endif
 
 		/* When we enable digit output, we'll get an extra digit
 		 * sync lost interrupt, that we need to ignore */
@@ -3492,9 +3490,13 @@ void dispc_set_lcd_timings(enum omap_channel channel,
 static void dispc_set_lcd_divisor(enum omap_channel channel, u16 lck_div,
 		u16 pck_div)
 {
-//FIXME-HASH: Double check this for Tate
+#if defined (CONFIG_PANEL_SAMSUNG_LTL089CL01) || (CONFIG_PANEL_NT71391_HYDIS)
 	BUG_ON(lck_div < 1);
 	BUG_ON(pck_div < 1);
+#else
+	BUG_ON(lck_div < 1);
+	BUG_ON(pck_div < 2);
+#endif
 
 	dispc_write_reg(DISPC_DIVISORo(channel),
 			FLD_VAL(lck_div, 23, 16) | FLD_VAL(pck_div, 7, 0));
@@ -3857,7 +3859,6 @@ static void _dispc_set_pol_freq(enum omap_channel channel, bool onoff, bool rf,
 	dispc_write_reg(DISPC_POL_FREQ(channel), l);
 }
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 static void dispc_get_pol_freq(enum omap_channel channel,
 			enum omap_panel_config *config, u8 *acbi, u8 *acb)
 {
@@ -3880,7 +3881,6 @@ static void dispc_get_pol_freq(enum omap_channel channel,
 	*acbi = FLD_GET(l, 11, 8);
 	*acb = FLD_GET(l, 7, 0);
 }
-#endif
 
 void dispc_set_pol_freq(enum omap_channel channel,
 		enum omap_panel_config config, u8 acbi, u8 acb)
@@ -3945,7 +3945,11 @@ int dispc_calc_clock_rates(unsigned long dispc_fclk_rate,
 {
 	if (cinfo->lck_div > 255 || cinfo->lck_div == 0)
 		return -EINVAL;
+#if defined (CONFIG_PANEL_SAMSUNG_LTL089CL01) || (CONFIG_PANEL_NT71391_HYDIS)
 	if (cinfo->pck_div < 1 || cinfo->pck_div > 255)
+#else
+	if (cinfo->pck_div < 2 || cinfo->pck_div > 255)
+#endif
 		return -EINVAL;
 
 	cinfo->lck = dispc_fclk_rate / cinfo->lck_div;
@@ -3960,7 +3964,6 @@ int dispc_set_clock_div(enum omap_channel channel,
 	DSSDBG("lck = %lu (%u)\n", cinfo->lck, cinfo->lck_div);
 	DSSDBG("pck = %lu (%u)\n", cinfo->pck, cinfo->pck_div);
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	/* In case DISPC_CORE_CLK == PCLK, IPC must work on rising edge */
 	if (dss_has_feature(FEAT_CORE_CLK_DIV) &&
 			(cinfo->lck_div * cinfo->pck_div == 1)) {
@@ -3970,7 +3973,6 @@ int dispc_set_clock_div(enum omap_channel channel,
 		config |= OMAP_DSS_LCD_IPC;
 		dispc_set_pol_freq(channel, config, acbi, acb);
 	}
-#endif
 
 	dispc_set_lcd_divisor(channel, cinfo->lck_div, cinfo->pck_div);
 

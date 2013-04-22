@@ -1688,7 +1688,6 @@ int dsi_pll_set_clock_div(struct platform_device *dsidev,
 
 	DSSDBGF();
 
-#if 0
 #ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	dsi->current_cinfo.use_sys_clk = cinfo->use_sys_clk;
 	dsi->current_cinfo.highfreq = cinfo->highfreq;
@@ -1704,7 +1703,6 @@ int dsi_pll_set_clock_div(struct platform_device *dsidev,
 	dsi->current_cinfo.regm = cinfo->regm;
 	dsi->current_cinfo.regm_dispc = cinfo->regm_dispc;
 	dsi->current_cinfo.regm_dsi = cinfo->regm_dsi;
-#endif
 #endif
 
 	DSSDBG("DSI Fint %ld\n", cinfo->fint);
@@ -3945,6 +3943,7 @@ static void dsi_set_lp_rx_timeout(struct platform_device *dsidev,
 
 	total_ticks = ticks * (x16 ? 16 : 1) * (x4 ? 4 : 1);
 
+	if (fck != 0)
 	DSSDBG("LP_RX_TO %lu ticks (%#x%s%s) = %lu ns\n",
 			total_ticks,
 			ticks, x4 ? " x4" : "", x16 ? " x16" : "",
@@ -3972,6 +3971,7 @@ static void dsi_set_ta_timeout(struct platform_device *dsidev, unsigned ticks,
 
 	total_ticks = ticks * (x16 ? 16 : 1) * (x8 ? 8 : 1);
 
+	if (fck != 0)
 	DSSDBG("TA_TO %lu ticks (%#x%s%s) = %lu ns\n",
 			total_ticks,
 			ticks, x8 ? " x8" : "", x16 ? " x16" : "",
@@ -4000,6 +4000,7 @@ static void dsi_set_stop_state_counter(struct platform_device *dsidev,
 
 	total_ticks = ticks * (x16 ? 16 : 1) * (x4 ? 4 : 1);
 
+	if (fck != 0)
 	DSSDBG("STOP_STATE_COUNTER %lu ticks (%#x%s%s) = %lu ns\n",
 			total_ticks,
 			ticks, x4 ? " x4" : "", x16 ? " x16" : "",
@@ -4027,6 +4028,7 @@ static void dsi_set_hs_tx_timeout(struct platform_device *dsidev,
 
 	total_ticks = ticks * (x16 ? 16 : 1) * (x4 ? 4 : 1);
 
+	if (fck != 0)
 	DSSDBG("HS_TX_TO %lu ticks (%#x%s%s) = %lu ns\n",
 			total_ticks,
 			ticks, x4 ? " x4" : "", x16 ? " x16" : "",
@@ -4637,6 +4639,7 @@ static void dsi_framedone_timeout_work_callback(struct work_struct *work)
 {
 	struct dsi_data *dsi = container_of(work, struct dsi_data,
 			framedone_timeout_work.work);
+
 	/* XXX While extremely unlikely, we could get FRAMEDONE interrupt after
 	 * 250ms which would conflict with this timeout work. What should be
 	 * done is first cancel the transfer on the HW, and then cancel the
@@ -4835,7 +4838,7 @@ static int dsi_configure_dsi_clocks(struct omap_dss_device *dssdev)
 		return r;
 	}
 
-//#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	/* Initialize all clock values during kernel boot */
         dsi->current_cinfo.use_sys_clk = cinfo.use_sys_clk;
         dsi->current_cinfo.highfreq = cinfo.highfreq;
@@ -4859,8 +4862,7 @@ static int dsi_configure_dsi_clocks(struct omap_dss_device *dssdev)
 			return r;
 		}
 	}
-//#else
-#if 0
+#else
 	DSSDBG("TATE: Calling dsi_pll_set_clock_div\n");
 	r = dsi_pll_set_clock_div(dsidev, &cinfo);
 	if (r) {
@@ -4868,7 +4870,6 @@ static int dsi_configure_dsi_clocks(struct omap_dss_device *dssdev)
 		return r;
 	}
 #endif
-//#endif
 
 	return 0;
 }
@@ -4904,7 +4905,9 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 {
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 	int dsi_module = dsi_get_dsidev_id(dsidev);
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	enum omap_dss_clk_source fclk_src;
+#endif
 	int r;
 
 	/* The SCPClk is required for PLL and complexio registers on OMAP4 */
@@ -4927,11 +4930,11 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 	}
 #else
 	DSSDBG("TATE: check skip_init (%d)\n", dssdev->skip_init);
-//	if(!dssdev->skip_init){
+	if(!dssdev->skip_init){
 		r = dsi_configure_dsi_clocks(dssdev);
 		if (r)
 			goto err1;
-//	}
+	}
 
 	dss_select_dispc_clk_source(dssdev->clocks.dispc.dispc_fclk_src);
 #endif
@@ -4963,9 +4966,9 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 	if (1)
 		_dsi_print_reset_status(dsidev);
 
-//#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	if(!dssdev->skip_init){
-//#endif
+#endif
 		if(dssdev->phy.dsi.type == OMAP_DSS_DSI_TYPE_CMD_MODE)
 			r = dsi_cmd_proto_config(dssdev);
 		else
@@ -4973,9 +4976,9 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 
 		if (r)
 			goto err3;
-//#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	}
-//#endif
+#endif
 
 	/* enable interface */
 	if(!dssdev->skip_init){
@@ -5065,11 +5068,14 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 	if (r)
 		goto err_get_dsi;
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	omap_device_scale(&dssdev->dev, &oh->od->pdev.dev,
 			dssdev->panel.timings.pixel_clock * 1000);
+#endif
 
-    // FIXME-HASH: Check this
-	if(!dssdev->skip_init) {
+	if(!dssdev->skip_init)
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	{
 		dsi_enable_pll_clock(dsidev, 1);
 
 	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 1, 1);
@@ -5078,8 +5084,21 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 	/* ENWAKEUP */
 	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 2, 2);
 
-		_dsi_initialize_irq(dsidev);
+	_dsi_initialize_irq(dsidev);
 	}
+#else
+	{
+		dsi_enable_pll_clock(dsidev, 1);
+
+	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 1, 1);
+	_dsi_wait_reset(dsidev);
+
+	/* ENWAKEUP */
+	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 2, 2);
+	}
+
+	_dsi_initialize_irq(dsidev);
+#endif
 
 	if(!dssdev->skip_init){
 		r = dsi_display_init_dispc(dssdev);
@@ -5193,7 +5212,10 @@ void omapdss_dsi_display_disable(struct omap_dss_device *dssdev,
 
 	dsi_display_uninit_dsi(dssdev, disconnect_lanes, enter_ulps);
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	omap_device_scale(&dssdev->dev, &oh->od->pdev.dev, 0);
+#endif
+
 	dsi_runtime_put(dsidev);
 	dsi_enable_pll_clock(dsidev, 0);
 
@@ -5415,8 +5437,7 @@ static int omap_dsi1hw_probe(struct platform_device *dsidev)
 	spin_lock_init(&dsi->irq_lock);
 	spin_lock_init(&dsi->errors_lock);
 	dsi->errors = 0;
-	//dsi->debug_write=1;
-	//dsi->debug_read=1;
+
 #ifdef CONFIG_OMAP2_DSS_COLLECT_IRQ_STATS
 	spin_lock_init(&dsi->irq_stats_lock);
 	dsi->irq_stats.last_reset = jiffies;
@@ -5577,10 +5598,6 @@ void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev)
 	dsi_write_reg(dsidev, DSI_VM_TIMING2, 0x04010A0A);   /* WINDOW_SIZE=4, VSA=1, VFP=10, VBP=10 */
 	dsi_write_reg(dsidev, DSI_VM_TIMING3, 0x02AC0500);   /* TL(31:16)=684, VACT(15:0)=1280 */
 	dsi_write_reg(dsidev, DSI_VM_TIMING4, 0x00000000);   /* HSA_HS_INTERLEAVING(23:16)=0, HFP_HS_INTERLEAVING(15:8)=0, HBP_HS_INTERLEAVING(7:0)=0 */
-//	dsi_write_reg(dsidev, DSI_VM_TIMING1, 0x01022038);   /* HSA=1, HFP=34, HBP=56 */
-//	dsi_write_reg(dsidev, DSI_VM_TIMING2, 0x0406030D);   /* WINDOW_SIZE=4, VSA=6, VFP=3, VBP=13 */
-//	dsi_write_reg(dsidev, DSI_VM_TIMING3, 0x02B50500);   /* TL(31:16)=1116, VACT(15:0)=1200 */
-//	dsi_write_reg(dsidev, DSI_VM_TIMING4, 0x00487296);   /* HSA_HS_INTERLEAVING(23:16)=0, HFP_HS_INTERLEAVING(15:8)=0, HBP_HS_INTERLEAVING(7:0)=0 */
 #else
 	dsi_write_reg(dsidev, DSI_VM_TIMING1, 0x01018014);   /* HSA=1, HFP=24, HBP=20 */
 	dsi_write_reg(dsidev, DSI_VM_TIMING2, 0x0406030D);   /* WINDOW_SIZE=4, VSA=6, VFP=3, VBP=13 */
@@ -5606,25 +5623,14 @@ void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev)
 	dsi_write_reg(dsidev, DSI_VM_TIMING7, 0x000E0013);   /* ENTER_HS_MODE_LATENCY(31:16)=14 EXIT_HS_MODE_LATENCY(15:0)=19 */
 #endif
 
-
-	/* set TA_TO_COUNTER accordignly to kozio value(???) */
-	/* enable TA_TO and set it to max */
-	/* disable stop_mode but set it to max */
-	/* dsi_write_reg(dsidev, DSI_TIMING1, 0xFFFF7FFF) */
-
-	/* set TA_TO_COUNTER accordignly to kozio value(???) */
-	/* disable LP_RX_TO but set it to max */
-	/* enable HS_TX_TO and set it to max */
-	/* dsi_write_reg(dsidev, DSI_TIMING2, 0xFFFF7FFF) */
-
 	dsi_vc_enable(dsidev, 1, true);
 	dsi_vc_enable(dsidev, 0, true);
 	dsi_if_enable(dsidev, true);
 
+#ifndef CONFIG_MACH_OMAP4_BOWSER
 	/* Send null packet to start DDR clock  */
-#if !defined (CONFIG_PANEL_NT71391_HYDIS)
-//	dsi_write_reg(dsidev, DSI_VC_SHORT_PACKET_HEADER(0), 0);
-//	msleep(1);
+	dsi_write_reg(dsidev, DSI_VC_SHORT_PACKET_HEADER(0), 0);
+	msleep(1);
 #endif
 }
 EXPORT_SYMBOL(dsi_videomode_panel_preinit);

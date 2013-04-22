@@ -2017,9 +2017,11 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 	/* Set OPP constraint on CORE only when it needed */
 	if (mgr->device && (mgr->device->state == OMAP_DSS_DISPLAY_ACTIVE))
 		if (omap_dss_overlay_ensure_bw()) {
+#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 			r = dss_set_min_bus_tput(HIGH_RES_TPUT);
 			if (r)
 				DSSERR("Failed to set OPP constraint\n");
+#endif
 		}
 
 	spin_lock_irqsave(&dss_cache.lock, flags);
