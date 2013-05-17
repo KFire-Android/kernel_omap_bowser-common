@@ -699,11 +699,11 @@ static int __init parse_tag_serial16(const struct tag *tag)
 	memcpy(system_serial16,
 		tag->u.id16.data,
 		SERIAL16_SIZE); /* Serial nuber */
-
+#if 0
 	pr_info("ATAGS:serial16:str=\"%.*s\"\n",
 			SERIAL16_SIZE,
 			system_serial16);
-
+#endif
 	return 0;
 }
 
@@ -748,12 +748,12 @@ static int __init parse_tag_mac(const struct tag *tag)
 	memcpy(system_mac_sec, tag->u.macaddr.secret, MAC_SEC_SIZE);
 	memcpy(system_mac_addr, tag->u.macaddr.wifi_addr, MAC_ADDR_SIZE);
 	memcpy(system_bt_mac_addr, tag->u.macaddr.bt_addr, MAC_ADDR_SIZE);
-
+#if 0
 	pr_info("ATAGS:mac:addr=%.*s secret=%.*s bt=%.*s\n",
 		MAC_ADDR_SIZE, system_mac_addr,
 		MAC_SEC_SIZE, system_mac_sec,
 		MAC_ADDR_SIZE, system_bt_mac_addr);
-
+#endif
 	return 0;
 }
 
