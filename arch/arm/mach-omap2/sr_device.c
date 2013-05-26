@@ -54,23 +54,33 @@ static void __init sr_set_nvalues(struct omap_volt_data *volt_data,
 
 	for (i = 0; i < count; i++) {
 		u32 v;
-		/*
-		 * In OMAP4 the efuse registers are 24 bit aligned.
-		 * A __raw_readl will fail for non-32 bit aligned address
-		 * and hence the 8-bit read and shift.
-		 */
-		if (cpu_is_omap44xx()) {
-			u16 offset = volt_data[i].sr_efuse_offs;
 
-			v = omap_ctrl_readb(offset) |
-				omap_ctrl_readb(offset + 1) << 8 |
-				omap_ctrl_readb(offset + 2) << 16;
-		} else {
-			 v = omap_ctrl_readl(volt_data[i].sr_efuse_offs);
+		/*
+		 * Check our volt_data for an nvalue override before
+		 * reading OMAP efuse registers.
+		 */
+		if (volt_data[i].nvalue_override > 0)
+			v = volt_data[i].nvalue_override;
+		else {
+			/*
+			 * In OMAP4 the efuse registers are 24 bit aligned.
+			 * A __raw_readl will fail for non-32 bit aligned address
+			 * and hence the 8-bit read and shift.
+			 */
+			if (cpu_is_omap44xx()) {
+				u16 offset = volt_data[i].sr_efuse_offs;
+
+				v = omap_ctrl_readb(offset) |
+					omap_ctrl_readb(offset + 1) << 8 |
+					omap_ctrl_readb(offset + 2) << 16;
+			} else {
+				 v = omap_ctrl_readl(volt_data[i].sr_efuse_offs);
+			}
 		}
 
 		nvalue_table[i].efuse_offs = volt_data[i].sr_efuse_offs;
 		nvalue_table[i].nvalue = v;
+		pr_info(">>> sr_set_nvalues v = %lu, sr_efuse_offs = %x\n", v, volt_data[i].sr_efuse_offs);
 	}
 
 	sr_data->nvalue_table = nvalue_table;
@@ -119,6 +129,7 @@ static int sr_dev_init(struct omap_hwmod *oh, void *user)
 		goto exit;
 	}
 
+	pr_info(">>> setting nvalues for oh = %s\n", oh->name);
 	sr_set_nvalues(volt_data, sr_data);
 
 	sr_data->enable_on_init = sr_enable_on_init;
