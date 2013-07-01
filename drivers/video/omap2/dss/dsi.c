@@ -42,8 +42,6 @@
 #include <video/omapdss.h>
 #include <plat/clock.h>
 #include <plat/omap_apps_brd_id.h>
-#include <plat/omap_device.h>
-#include "../../../../arch/arm/mach-omap2/dvfs.h"
 
 #include "dss.h"
 #include "dss_features.h"
@@ -5044,17 +5042,11 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 {
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 	struct dsi_data *dsi = dsi_get_dsidrv_data(dsidev);
-	struct omap_hwmod *oh = omap_hwmod_lookup("dss_dispc");
 	int r = 0;
 
 	DSSDBG("dsi_display_enable\n");
 
 	WARN_ON(!dsi_bus_is_locked(dsidev));
-
-	if (!oh || !oh->od) {
-		pr_warn("%s: no hwmod or odev for dss_dispc\n", __func__);
-		return -ENODEV;
-	}
 
 	mutex_lock(&dsi->lock);
 
@@ -5068,10 +5060,6 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 	if (r)
 		goto err_get_dsi;
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-	omap_device_scale(&dssdev->dev, &oh->od->pdev.dev,
-			dssdev->panel.timings.pixel_clock * 1000);
-#endif
 
 	if(!dssdev->skip_init)
 #ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
@@ -5192,16 +5180,10 @@ void omapdss_dsi_display_disable(struct omap_dss_device *dssdev,
 {
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 	struct dsi_data *dsi = dsi_get_dsidrv_data(dsidev);
-	struct omap_hwmod *oh = omap_hwmod_lookup("dss_dispc");
 
 	DSSDBG("dsi_display_disable\n");
 
 	WARN_ON(!dsi_bus_is_locked(dsidev));
-
-	if (!oh || !oh->od) {
-		pr_warn("%s: no hwmod or odev for dss_dispc\n", __func__);
-		return;
-	}
 
 	mutex_lock(&dsi->lock);
 
@@ -5212,9 +5194,6 @@ void omapdss_dsi_display_disable(struct omap_dss_device *dssdev,
 
 	dsi_display_uninit_dsi(dssdev, disconnect_lanes, enter_ulps);
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-	omap_device_scale(&dssdev->dev, &oh->od->pdev.dev, 0);
-#endif
 
 	dsi_runtime_put(dsidev);
 	dsi_enable_pll_clock(dsidev, 0);
