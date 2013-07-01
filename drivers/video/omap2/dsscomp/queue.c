@@ -811,18 +811,9 @@ skip_ovl_set:
 				 */
 				r = 0;
 			}
-		} else {
+		} else
 			/* wait for sync to do smooth animations */
 			mgr->wait_for_vsync(mgr);
-
-			/* Release OPP constraint on CORE when it posible */
-			if (!omap_dss_overlay_ensure_bw()) {
-				r = dss_set_min_bus_tput(-1);
-				if (r)
-					dev_err(DEV(cdev),
-					"Failed to release OPP constraint\n");
-			}
-		}
 	}
 
 done:
