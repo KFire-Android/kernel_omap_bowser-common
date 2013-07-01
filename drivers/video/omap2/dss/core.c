@@ -37,12 +37,10 @@
 
 #include <video/omapdss.h>
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 #include <linux/clk.h>
 #include <plat/clock.h>
 #include <linux/delay.h>
-#endif /* CONFIG_FB_OMAP_BOOTLOADER_INIT */
 #endif
 
 #include "dss.h"
@@ -96,6 +94,27 @@ struct regulator *dss_get_vdds_sdi(void)
 
 	return reg;
 }
+
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+int dss_set_dispc_clk(unsigned long freq)
+{
+	struct clk *clk;
+	int r;
+
+	if (cpu_is_omap44xx()) {
+		clk = clk_get(NULL, "dpll_per_m5x2_ck");
+		if (IS_ERR(clk)) {
+			DSSERR("Failed to get dpll_per_m5x2_ck\n");
+			r = PTR_ERR(clk);
+			return r;
+		}
+		r = clk_set_rate(clk, freq);
+		if (r)
+			return r;
+	}
+	return 0;
+}
+#endif
 
 #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_OMAP2_DSS_DEBUG_SUPPORT)
 static int dss_debug_show(struct seq_file *s, void *unused)
@@ -209,11 +228,9 @@ static int omap_dss_probe(struct platform_device *pdev)
 	int r;
 	int i;
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	static int first_boot = 1;
 	struct clk *iclk;
-#endif /* CONFIG_FB_OMAP_BOOTLOADER_INIT */
 #endif
 
 	core.pdev = pdev;
@@ -284,8 +301,7 @@ static int omap_dss_probe(struct platform_device *pdev)
 		}
 	}
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (unlikely(first_boot != 0)) {
 		iclk = clk_get(NULL, "ick");
 		if (!IS_ERR(iclk)) {
@@ -294,7 +310,6 @@ static int omap_dss_probe(struct platform_device *pdev)
 		}
 		first_boot = 0;
 	}
-#endif /* CONFIG_FB_OMAP_BOOTLOADER_INIT */
 #endif
 
 	return 0;

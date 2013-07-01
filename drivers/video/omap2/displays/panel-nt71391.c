@@ -311,9 +311,11 @@ static int nt71391_power_on(struct omap_dss_device *dssdev)
 	int r;
 	u8 dcs_cmd = 0x32;
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	r = dss_set_dispc_clk(192000000);
 	if (r)
 		dev_err(&dssdev->dev, "Failed to set dispc clock rate\n");
+#endif
 
 	/* At power on the first vsync has not been received yet */
 	dssdev->first_vsync = false;
