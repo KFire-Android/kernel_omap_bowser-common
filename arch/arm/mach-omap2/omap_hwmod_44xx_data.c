@@ -5626,6 +5626,9 @@ static struct omap_hwmod_ocp_if *omap44xx_uart2_slaves[] = {
 static struct omap_hwmod omap44xx_uart2_hwmod = {
 	.name		= "uart2",
 	.class		= &omap44xx_uart_hwmod_class,
+#ifdef CONFIG_MACH_OMAP4_BOWSER
+	.flags		= HWMOD_SWSUP_SIDLE,
+#endif
 	.mpu_irqs	= omap44xx_uart2_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_uart2_irqs),
 	.sdma_reqs	= omap44xx_uart2_sdma_reqs,
