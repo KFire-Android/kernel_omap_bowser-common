@@ -41,7 +41,7 @@
  * Estimated available DSS bandwidth on L3@OPP50 is ~800MB/s.
  * It is approximately 3 WXGA layers or almost 1.5 FullHD layers at 60fps rate.
  */
-#define OVERLAY_AREA_BW_THRESHOLD (1280*800*3)
+#define OVERLAY_AREA_BW_THRESHOLD (1920*350*3)
 
 static DEFINE_MUTEX(overlay_bw_mutex);
 static bool overlay_bw_requested;
