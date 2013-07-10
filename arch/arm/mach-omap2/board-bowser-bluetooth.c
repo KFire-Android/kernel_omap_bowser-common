@@ -375,6 +375,7 @@ pr_debug( "%s: TOP\n",__FUNCTION__);
 		return -ENOMEM;
 	}
 
+	rfkill_set_states(bt_rfkill, true, false);
 	rc = rfkill_register(bt_rfkill);
 	if (unlikely(rc)) {
 		pr_debug( "%s: rfkill_register(bt_rfkill) failed, rc=%d\n",__FUNCTION__,rc);
@@ -382,9 +383,6 @@ pr_debug( "%s: TOP\n",__FUNCTION__);
 		return -1;
 	}
 
-	rfkill_set_states(bt_rfkill, true, false);
-
-	bcm2076_bt_rfkill_set_power(NULL, true);
 
 	ret = bcm_bt_lpm_init(pdev);
 	if (ret) {
