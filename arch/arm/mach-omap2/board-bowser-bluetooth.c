@@ -35,7 +35,10 @@
 
 // GPIO settings
 #define BT_REG_GPIO 46
-//att #define BT_RESET_GPIO 53
+#define BT_RESET_GPIO 53
+
+// HASH: Set this for bowser which uses a combined ENABLE/RESET GPIO
+#define CONFIG_BLUETOOTH_USES_COMBINED_GPIO 1
 
 #define BT_WAKE_GPIO 49
 #define BT_HOST_WAKE_GPIO 82
@@ -74,13 +77,15 @@ static int bcm2076_bt_rfkill_set_power(void *data, bool blocked)
 			regulator_enable(clk32kaudio_reg);
 
 		gpio_set_value(BT_REG_GPIO, 1);
-//att BT_RESET_GPIO is tied to BT_REG_GPIO so no need to set this
-//att		gpio_set_value(BT_RESET_GPIO, 1);
+#ifndef CONFIG_BLUETOOTH_USES_COMBINED_GPIO
+		gpio_set_value(BT_RESET_GPIO, 1);
+#endif
 
 	} else {
 		printk("bcm2076_bt_rfkill_set_power(Off)\n");
-//att BT_RESET_GPIO is tied to BT_REG_GPIO so no need to set this
-//att		gpio_set_value(BT_RESET_GPIO, 0);
+#ifndef CONFIG_BLUETOOTH_USES_COMBINED_GPIO
+		gpio_set_value(BT_RESET_GPIO, 0);
+#endif
 		gpio_set_value(BT_REG_GPIO, 0);
 		if (clk32kaudio_reg && bt_enabled)
 			regulator_disable(clk32kaudio_reg);
