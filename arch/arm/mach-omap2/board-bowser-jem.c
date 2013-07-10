@@ -1167,7 +1167,7 @@ static struct omap_uart_port_info blaze_uart2_info __initdata = {
 	.dma_rx_buf_size = DEFAULT_RXDMA_BUFSIZE,
 	.dma_rx_poll_rate = DEFAULT_RXDMA_POLLRATE,
 	.dma_rx_timeout = DEFAULT_RXDMA_TIMEOUT,
-	.auto_sus_timeout = DEFAULT_AUTOSUSPEND_DELAY,
+	.auto_sus_timeout = 0,
 	.wer = (OMAP_UART_WER_TX | OMAP_UART_WER_RX | OMAP_UART_WER_CTS),
 	.wake_peer      = bcm_bt_lpm_exit_lpm_locked,
 };
