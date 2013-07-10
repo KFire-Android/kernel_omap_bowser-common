@@ -42,7 +42,6 @@
 
 //The BT UART is set to UART2 on this platform (defined in plat/omap-serial.h)
 
-#define BT_HOST_WAKE_INT_ENABLED	1
 extern int bowser_bluetooth_irq_num;	//from board-xxxx.c
 
 static struct rfkill *bt_rfkill;
@@ -268,7 +267,6 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 	}
 #endif 	//att XXX already done in board config
 
-#if BT_HOST_WAKE_INT_ENABLED
 	pr_debug( "%s about to get the BT_HOST_WAKE GPIO\n",__FUNCTION__);
 	rc = gpio_request(BT_HOST_WAKE_GPIO, "bcm2076_host_wake_gpio");
 	if (unlikely(rc)) {
@@ -276,7 +274,6 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 		gpio_free(BT_WAKE_GPIO);
 		return rc;
 	}
-#endif //BT_HOST_WAKE_INT_ENABLED
 
 	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	bt_lpm.enter_lpm_delay = ktime_set(1, 0);  /* 1 sec */
@@ -284,7 +281,6 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 
 	bt_lpm.host_wake = 0;
 
-#if BT_HOST_WAKE_INT_ENABLED
 	pr_debug( "%s about to connect BT_HOST_WAKE_GPIO irq/isr\n",__FUNCTION__);
 
 	//TI stores this in the board-config
@@ -315,9 +311,6 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 
 //	pr_debug( "%s skipping setting the directions of BT_HOST WAKE\n",__FUNCTION__);
 //	gpio_direction_input(BT_HOST_WAKE_GPIO);
-#else	//att XXX disabling this until TI enables it
-	pr_debug( "%s skipping enabling the BT_HOST_WAKE irq\n",__FUNCTION__);
-#endif //BT_HOST_WAKE_INT_ENABLED
 
 	snprintf(bt_lpm.wake_lock_name, sizeof(bt_lpm.wake_lock_name),
 			"BTLowPower");
@@ -410,7 +403,6 @@ static int bcm2076_bluetooth_remove(struct platform_device *pdev)
 
 int bcm2076_bluetooth_suspend(struct platform_device *pdev, pm_message_t state)
 {
-#if BT_HOST_WAKE_INT_ENABLED
 	int irq = gpio_to_irq(BT_HOST_WAKE_GPIO);
 	int host_wake;
 
@@ -426,21 +418,13 @@ int bcm2076_bluetooth_suspend(struct platform_device *pdev, pm_message_t state)
 	pr_debug("** suspend ** changing RTS pin to GPIO pulled up\n");
 	omap_rts_mux_write(MUX_PULL_UP, UART2);
 
-#else
-	pr_debug( "%s: BT_HOST_WAKE disabled\n",__FUNCTION__);
-#endif //BT_HOST_WAKE_INT_ENABLED
-
 	return 0;
 }
 
 int bcm2076_bluetooth_resume(struct platform_device *pdev)
 {
-#if BT_HOST_WAKE_INT_ENABLED
 	int irq = gpio_to_irq(BT_HOST_WAKE_GPIO);
 	enable_irq(irq);
-#else
-	pr_debug( "%s: BT_HOST_WAKE disabled\n",__FUNCTION__);
-#endif //BT_HOST_WAKE_INT_ENABLED
 
 	//Mux back GPIO PULL UP pin in RTS pin
 	pr_debug("** resume ** changing RTS pin from GPIO back to RTS\n");
