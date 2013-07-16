@@ -466,7 +466,7 @@ CONFIG_ARM_FLUSH_CONSOLE_ON_RESTART=y
 # CONFIG_USE_OF is not set
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="mem=1024M console=null rootdelay=2 init=/init androidboot.console=ttyO2 androidboot.hardware=bowser vmalloc=384M"
+CONFIG_CMDLINE="mem=1024M console=null rootdelay=2 init=/init androidboot.console=ttyO2 androidboot.hardware=bowser"
 # CONFIG_CMDLINE_FROM_BOOTLOADER is not set
 # CONFIG_CMDLINE_EXTEND is not set
 CONFIG_CMDLINE_FORCE=y
