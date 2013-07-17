@@ -530,18 +530,7 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	dispc_reg_config.rotation = rotation;
 
 	/* DMA buffer allications - assuming reset values */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-	dispc_reg_config.gfx_top_buffer = 0;
-	dispc_reg_config.gfx_bottom_buffer = 0;
-	dispc_reg_config.vid1_top_buffer = 1;
-	dispc_reg_config.vid1_bottom_buffer = 1;
-	dispc_reg_config.vid2_top_buffer = 2;
-	dispc_reg_config.vid2_bottom_buffer = 2;
-	dispc_reg_config.vid3_top_buffer = 3;
-	dispc_reg_config.vid3_bottom_buffer = 3;
-	dispc_reg_config.wb_top_buffer = 4;
-	dispc_reg_config.wb_bottom_buffer = 4;
-#else
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 	dispc_buffer_sizes = dispc_read_reg(DISPC_GLOBAL_BUFFER);
 	dispc_reg_config.gfx_top_buffer = (dispc_buffer_sizes >> 0) & 7 ;
 	dispc_reg_config.gfx_bottom_buffer = (dispc_buffer_sizes >> 3) & 7;
@@ -553,6 +542,17 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	dispc_reg_config.vid3_bottom_buffer = (dispc_buffer_sizes >> 21) & 7;
 	dispc_reg_config.wb_top_buffer = (dispc_buffer_sizes >> 24) & 7;
 	dispc_reg_config.wb_bottom_buffer = (dispc_buffer_sizes >> 27) & 7;
+#else
+	dispc_reg_config.gfx_top_buffer = 0;
+	dispc_reg_config.gfx_bottom_buffer = 0;
+	dispc_reg_config.vid1_top_buffer = 1;
+	dispc_reg_config.vid1_bottom_buffer = 1;
+	dispc_reg_config.vid2_top_buffer = 2;
+	dispc_reg_config.vid2_bottom_buffer = 2;
+	dispc_reg_config.vid3_top_buffer = 3;
+	dispc_reg_config.vid3_bottom_buffer = 3;
+	dispc_reg_config.wb_top_buffer = 4;
+	dispc_reg_config.wb_bottom_buffer = 4;
 #endif
 
 	/* antiFlicker is off */
@@ -2324,7 +2324,7 @@ int dispc_scaling_decision(u16 width, u16 height,
 		   b. We look for Functional Clock: 192 MHz and sink device pixel clock e.g: VGA size: 25175000 and make decision
 		   c. We do not decimate if the input width (1920) divided by output width (e.g: 640) is too high
            Setting the "maxdownscale" parameter to 2 takes care of doing Decimation Process */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
         if( channel == OMAP_DSS_CHANNEL_DIGIT && ((fclk_max / dispc_pclk_rate(channel)) > 6) && (width / out_width) < 4) {
                 maxdownscale = 2;
         }
@@ -2979,7 +2979,7 @@ static void dispc_enable_lcd_out(enum omap_channel channel, bool enable)
 			DSSERR("failed to unregister FRAMEDONE isr\n");
 	}
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_DIGIT)) {
 		if (!enable) {
 			disable_irq(dispc.irq);
@@ -3005,9 +3005,10 @@ static void dispc_enable_digit_out(enum omap_display_type type, bool enable)
 
 	if (enable) {
 		unsigned long flags;
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 		if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_LCD))
 			enable_irq(dispc.irq);
-
+#endif
 		/* When we enable digit output, we'll get an extra digit
 		 * sync lost interrupt, that we need to ignore */
 		spin_lock_irqsave(&dispc.irq_lock, flags);
@@ -3342,7 +3343,7 @@ void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 		REG_FLD_MOD(DISPC_CONTROL, code, 9, 8);
 }
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 void dispc_set_dithering(enum omap_channel channel)
 {
 	int temp;
@@ -4612,7 +4613,7 @@ static void _omap_dispc_initial_config(void)
 	u32 l;
 
 	/* Exclusively enable DISPC_CORE_CLK and set divider to 1 */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (dss_has_feature(FEAT_CORE_CLK_DIV)) {
 		l = dispc_read_reg(DISPC_DIVISOR);
 		/* Use DISPC_DIVISOR.LCD, instead of DISPC_DIVISOR1.LCD */
@@ -4629,7 +4630,7 @@ static void _omap_dispc_initial_config(void)
 	}
 
 	/* FUNCGATED */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (dss_has_feature(FEAT_FUNCGATED))
 		REG_FLD_MOD(DISPC_CONFIG, 1, 9, 9);
 
@@ -4641,7 +4642,7 @@ static void _omap_dispc_initial_config(void)
 	if (cpu_is_omap24xx())
 		__raw_writel(0x402000b0, OMAP2_L3_IO_ADDRESS(0x680050a0));
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	dispc_set_loadmode(OMAP_DSS_LOAD_FRAME_ONLY);
 #endif
 

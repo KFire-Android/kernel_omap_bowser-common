@@ -870,7 +870,7 @@ static inline void dss_ovl_cb(struct omapdss_ovl_cb *cb, int id, int status)
 }
 void omapdss_hdmi_get_audio_descriptors(struct hdmi_audio_edid *audio_db);
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 int dss_set_dispc_clk(unsigned long freq);
 #endif
 #endif

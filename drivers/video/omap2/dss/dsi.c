@@ -3622,7 +3622,7 @@ int dsi_vc_gen_write_nosync(struct omap_dss_device *dssdev, int channel,
 
 	BUG_ON(len == 0);
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (len == 1) {
 		r = dsi_vc_send_short(dsidev, channel, DSI_DT_GENERIC_SHORT_WRITE_0,
 				data[0], 0);
@@ -3709,7 +3709,7 @@ int dsi_vc_gen_read_2(struct omap_dss_device *dssdev, int channel, u16 cmd,
 	if (dsi->debug_read)
 		DSSDBG("%s(ch%d, cmd %x)\n", __func__, channel, cmd);
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	r = dsi_vc_send_short(dsidev, channel, DSI_DT_GENERIC_SHORT_READ, cmd, 0);
 #else
 	r = dsi_vc_send_short(dsidev, channel, DSI_DT_GENERIC_READ_2, cmd, 0);
@@ -3721,7 +3721,7 @@ int dsi_vc_gen_read_2(struct omap_dss_device *dssdev, int channel, u16 cmd,
 	if (r)
 		goto err;
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	/* Wait for atleast 10us after BTA before reading Rx FIFO */
 	udelay(15);
 #endif
@@ -3743,7 +3743,7 @@ int dsi_vc_gen_read_2(struct omap_dss_device *dssdev, int channel, u16 cmd,
 		r = -EIO;
 		goto err;
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	} else if (dt == DSI_DT_RX_SHORT_READ_1 ||
 			dt == DSI_DT_GENERIC_RX_SHORT_READ_1) {
 #else
@@ -3760,7 +3760,7 @@ int dsi_vc_gen_read_2(struct omap_dss_device *dssdev, int channel, u16 cmd,
 
 		buf[0] = data;
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 		/* Read the error report NT71391 TCON is sending */
 		if (REG_GET(dsidev, DSI_VC_CTRL(channel), 20, 20)) {
 			DSSERR("read error report\n");
@@ -4783,7 +4783,7 @@ static int dsi_display_init_dispc(struct omap_dss_device *dssdev)
 
 
 	dispc_set_tft_data_lines(dssdev->manager->id, dssdev->ctrl.pixel_size);
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	dispc_set_dithering(dssdev->manager->id);
 #endif
 
@@ -4823,7 +4823,9 @@ static int dsi_configure_dsi_clocks(struct omap_dss_device *dssdev)
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 	struct dsi_clock_info cinfo;
 	int r;
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	struct dsi_data *dsi = dsi_get_dsidrv_data(dsidev);
+#endif
 
 	/* we always use DSS_CLK_SYSCK as input clock */
 	cinfo.use_sys_clk = true;
@@ -4837,7 +4839,7 @@ static int dsi_configure_dsi_clocks(struct omap_dss_device *dssdev)
 		return r;
 	}
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	/* Initialize all clock values during kernel boot */
         dsi->current_cinfo.use_sys_clk = cinfo.use_sys_clk;
         dsi->current_cinfo.highfreq = cinfo.highfreq;
@@ -4862,7 +4864,6 @@ static int dsi_configure_dsi_clocks(struct omap_dss_device *dssdev)
 		}
 	}
 #else
-	DSSDBG("TATE: Calling dsi_pll_set_clock_div\n");
 	r = dsi_pll_set_clock_div(dsidev, &cinfo);
 	if (r) {
 		DSSERR("Failed to set dsi clocks\n");
@@ -4904,7 +4905,7 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 {
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 	int dsi_module = dsi_get_dsidev_id(dsidev);
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	enum omap_dss_clk_source fclk_src;
 #endif
 	int r;
@@ -4918,7 +4919,7 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 	if (r)
 		goto err0;
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	r = dsi_configure_dsi_clocks(dssdev);
 	if (r)
 		goto err1;
@@ -4928,7 +4929,6 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 		dss_select_dispc_clk_source(fclk_src);
 	}
 #else
-	DSSDBG("TATE: check skip_init (%d)\n", dssdev->skip_init);
 	if(!dssdev->skip_init){
 		r = dsi_configure_dsi_clocks(dssdev);
 		if (r)
@@ -4965,17 +4965,17 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 	if (1)
 		_dsi_print_reset_status(dsidev);
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if(!dssdev->skip_init){
 #endif
-		if(dssdev->phy.dsi.type == OMAP_DSS_DSI_TYPE_CMD_MODE)
-			r = dsi_cmd_proto_config(dssdev);
-		else
-			r = dsi_video_proto_config(dssdev);
+	if(dssdev->phy.dsi.type == OMAP_DSS_DSI_TYPE_CMD_MODE)
+		r = dsi_cmd_proto_config(dssdev);
+	else
+		r = dsi_video_proto_config(dssdev);
 
-		if (r)
-			goto err3;
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+	if (r)
+		goto err3;
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	}
 #endif
 
@@ -5068,8 +5068,9 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 			dssdev->panel.timings.pixel_clock * 1000);
 
 	if(!dssdev->skip_init)
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	{
+#endif
 		dsi_enable_pll_clock(dsidev, 1);
 
 	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 1, 1);
@@ -5078,19 +5079,15 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 	/* ENWAKEUP */
 	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 2, 2);
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	_dsi_initialize_irq(dsidev);
 	}
 #else
-	{
-		dsi_enable_pll_clock(dsidev, 1);
-
-	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 1, 1);
-	_dsi_wait_reset(dsidev);
-
-	/* ENWAKEUP */
-	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 2, 2);
 	}
-
+	_dsi_initialize_irq(dsidev);
+#endif
+#else
 	_dsi_initialize_irq(dsidev);
 #endif
 
@@ -5196,8 +5193,10 @@ void omapdss_dsi_display_disable(struct omap_dss_device *dssdev,
 
 	mutex_lock(&dsi->lock);
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	REG_FLD_MOD(dsidev, DSI_SYSCONFIG, 1, 1, 1);
 	_dsi_wait_reset(dsidev);
+#endif
 
 	dsi_display_uninit_dispc(dssdev);
 
@@ -5569,6 +5568,7 @@ void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev)
 {
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	dsi_vc_enable(dsidev, 0, false);
 	dsi_vc_enable(dsidev, 1, false);
 	dsi_if_enable(dsidev, false);
@@ -5618,7 +5618,7 @@ void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev)
 	dsi_vc_enable(dsidev, 0, true);
 	dsi_if_enable(dsidev, true);
 
-#ifndef CONFIG_MACH_OMAP4_BOWSER
+#else
 	/* Send null packet to start DDR clock  */
 	dsi_write_reg(dsidev, DSI_VC_SHORT_PACKET_HEADER(0), 0);
 	msleep(1);

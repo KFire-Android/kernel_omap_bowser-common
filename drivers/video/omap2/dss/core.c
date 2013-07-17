@@ -95,7 +95,7 @@ struct regulator *dss_get_vdds_sdi(void)
 	return reg;
 }
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 int dss_set_dispc_clk(unsigned long freq)
 {
 	struct clk *clk;
