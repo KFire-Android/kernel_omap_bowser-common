@@ -186,7 +186,7 @@ static void dispc_save_context(void)
 	SR(DIVISORo(OMAP_DSS_CHANNEL_LCD));
 	if (dss_has_feature(FEAT_GLOBAL_ALPHA))
 		SR(GLOBAL_ALPHA);
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	SR(GLOBAL_BUFFER);
 #endif
 	SR(SIZE_MGR(OMAP_DSS_CHANNEL_DIGIT));
@@ -343,7 +343,7 @@ static void dispc_restore_context(void)
 	RR(DIVISORo(OMAP_DSS_CHANNEL_LCD));
 	if (dss_has_feature(FEAT_GLOBAL_ALPHA))
 		RR(GLOBAL_ALPHA);
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	RR(GLOBAL_BUFFER);
 #endif
 	RR(SIZE_MGR(OMAP_DSS_CHANNEL_DIGIT));
@@ -490,7 +490,7 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	u32 val, burstsize, doublestride;
 	u32 rotation, bursttype, color_mode;
 	struct dispc_config dispc_reg_config;
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	u32 dispc_buffer_sizes;
 #endif
 
@@ -530,7 +530,7 @@ static u32 dispc_calculate_threshold(enum omap_plane plane, u32 paddr,
 	dispc_reg_config.rotation = rotation;
 
 	/* DMA buffer allications - assuming reset values */
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	dispc_buffer_sizes = dispc_read_reg(DISPC_GLOBAL_BUFFER);
 	dispc_reg_config.gfx_top_buffer = (dispc_buffer_sizes >> 0) & 7 ;
 	dispc_reg_config.gfx_bottom_buffer = (dispc_buffer_sizes >> 3) & 7;
@@ -4613,7 +4613,6 @@ static void _omap_dispc_initial_config(void)
 	u32 l;
 
 	/* Exclusively enable DISPC_CORE_CLK and set divider to 1 */
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (dss_has_feature(FEAT_CORE_CLK_DIV)) {
 		l = dispc_read_reg(DISPC_DIVISOR);
 		/* Use DISPC_DIVISOR.LCD, instead of DISPC_DIVISOR1.LCD */
@@ -4621,7 +4620,6 @@ static void _omap_dispc_initial_config(void)
 		l = FLD_MOD(l, 1, 23, 16);
 		dispc_write_reg(DISPC_DIVISOR, l);
 	}
-#endif
 
 	/* for OMAP4 ERRATUM xxxx: Mstandby and disconnect protocol issue */
 	if (cpu_is_omap44xx()) {
@@ -4630,21 +4628,17 @@ static void _omap_dispc_initial_config(void)
 	}
 
 	/* FUNCGATED */
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	if (dss_has_feature(FEAT_FUNCGATED))
 		REG_FLD_MOD(DISPC_CONFIG, 1, 9, 9);
 
 	REG_FLD_MOD(DISPC_CONFIG, 1, 17, 17);
-#endif
 
 	/* L3 firewall setting: enable access to OCM RAM */
 	/* XXX this should be somewhere in plat-omap */
 	if (cpu_is_omap24xx())
 		__raw_writel(0x402000b0, OMAP2_L3_IO_ADDRESS(0x680050a0));
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
 	dispc_set_loadmode(OMAP_DSS_LOAD_FRAME_ONLY);
-#endif
 
 	dispc_read_plane_fifo_sizes();
 
