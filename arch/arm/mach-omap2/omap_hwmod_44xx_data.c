@@ -2650,15 +2650,14 @@ static struct omap_hwmod_opt_clk gpio2_opt_clks[] = {
 static struct omap_hwmod omap44xx_gpio2_hwmod = {
 	.name		= "gpio2",
 	.class		= &omap44xx_gpio_hwmod_class,
+#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+	.flags		= HWMOD_INIT_NO_RESET,
+#else
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
+#endif
 	.mpu_irqs	= omap44xx_gpio2_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_gpio2_irqs),
 	.main_clk	= "gpio2_ick",
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
-#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
-	.flags		= HWMOD_INIT_NO_RESET,
-#endif
-#endif
 
 	.prcm = {
 		.omap4 = {
