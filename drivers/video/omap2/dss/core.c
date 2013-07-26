@@ -37,7 +37,7 @@
 
 #include <video/omapdss.h>
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 #include <linux/clk.h>
 #include <plat/clock.h>
 #include <linux/delay.h>
@@ -228,7 +228,7 @@ static int omap_dss_probe(struct platform_device *pdev)
 	int r;
 	int i;
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	static int first_boot = 1;
 	struct clk *iclk;
 #endif
@@ -301,7 +301,7 @@ static int omap_dss_probe(struct platform_device *pdev)
 		}
 	}
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM
+#ifdef CONFIG_MACH_OMAP4_BOWSER
 	if (unlikely(first_boot != 0)) {
 		iclk = clk_get(NULL, "ick");
 		if (!IS_ERR(iclk)) {
