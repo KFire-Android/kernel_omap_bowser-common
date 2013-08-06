@@ -94,12 +94,12 @@
 #endif
 
 #include <plat/omap-serial.h>
-/* JossCheng, 20111221, Porting gyro sensor and e-compass {*/
-#ifdef CONFIG_MPU_SENSORS_MPU6050B1
-#include <linux/mpu.h>
+
+#ifdef CONFIG_INV_MPU_IIO
+#include <linux/mpu_iio.h>
 #define GPIO_GRYO               4
 #endif
-/* JossCheng, 20111221, Porting gyro sensor and e-compass }*/
+
 #ifdef CONFIG_INPUT_BU52061_HALLSENSOR
 #define HALL_EFFECT 0  // Hall sensor output pin -- gpio_wk0
 #endif
@@ -759,19 +759,13 @@ static struct i2c_board_info __initdata sdp4430_i2c_2_boardinfo[] = {
 };
 /*}SW5, Jamestsai, 1213, enable cypress/atmel*/
 
-/* JossCheng, 20111221, Porting gyro sensor and e-compass {*/
-#ifdef CONFIG_MPU_SENSORS_MPU6050B1
-static struct mpu_platform_data inv_mpu_data = {
+#ifdef CONFIG_INV_MPU_IIO
+static struct mpu_platform_data gyro_platform_data = {
 	.int_config  = 0x10,
+	.level_shifter = 0,
 	.orientation = {  -1,  0,  0,
 			   0, -1,  0,
 			   0,  0,  1 },
-};
-static struct ext_slave_platform_data mpu_compass_data = {
-	.bus         = EXT_SLAVE_BUS_SECONDARY,
-	.orientation = { 1, 0, 0,
-			 0, 1, 0,
-			 0, 0, -1 },
 };
 
 static void mpu6050b1_init(void)
@@ -780,7 +774,6 @@ static void mpu6050b1_init(void)
 	gpio_direction_input(GPIO_GRYO);
 }
 #endif
-/* JossCheng, 20111221, Porting gyro sensor and e-compass }*/
 
 #if defined (CONFIG_TATE_HALL_SENSORS)
 static void hall_init()
@@ -835,11 +828,11 @@ static struct i2c_board_info __initdata sdp4430_i2c_4_boardinfo[] = {
 #endif
 // BokeeLi, 2011/12/14, Porting proximity driver
 
-#ifdef CONFIG_MPU_SENSORS_MPU6050B1
+#ifdef CONFIG_INV_MPU_IIO
 	{
 		I2C_BOARD_INFO("mpu6050", 0x68),
 		.irq = OMAP_GPIO_IRQ(GPIO_GRYO),
-		.platform_data = &inv_mpu_data,
+		.platform_data = &gyro_platform_data,
 	},
 #endif
 
@@ -1394,12 +1387,9 @@ static void __init omap_4430sdp_init(void)
 	blaze_pmic_mux_init();
 
 	omap4_i2c_init();
-	/* JossCheng, 20111221, Porting gyro sensor and e-compass {*/
-#ifdef CONFIG_MPU_SENSORS_MPU6050B1
+#ifdef CONFIG_INV_MPU_IIO
 	mpu6050b1_init();
 #endif
-	/* JossCheng, 20111221, Porting gyro sensor and e-compass }*/
-	//blaze_sensor_init();
 // Anvoi, 2011/12/14, Porting Light sensor driver to ICS
 	omap4_als_init();
 // Anvoi, 2011/12/14, Porting Light sensor driver to ICS
