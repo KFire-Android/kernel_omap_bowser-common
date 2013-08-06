@@ -567,8 +567,5 @@ source "drivers/misc/gcx/gccore/Kconfig"
 source "drivers/misc/gcx/gcioctl/Kconfig"
 source "drivers/misc/gcx/gcbv/Kconfig"
 source "drivers/misc/cache-2dmanager/Kconfig"
-#JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 {
-source "drivers/misc/inv_mpu/Kconfig"
-#JossCheng, 20111221, Porting InvenSense Gyro sensor MPU6050 }
 
 endif # MISC_DEVICES
