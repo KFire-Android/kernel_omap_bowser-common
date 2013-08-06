@@ -1,7 +1,19 @@
-\#
+#
 # Light sensors
 #
-comment "Light sensors"
+menu "Light sensors"
+
+config SENSORS_BH1721
+	tristate "Rohm BH1721FVC Ambient Light Sensor"
+	depends on I2C && GPIOLIB
+	default n
+	help
+	  If you say yes here you get support for the ROHM
+	  BH1721FVC light sensor. This driver provides ambient
+	  light intensity in lux, accessible through sysfs.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called bh1721fvc.
 
 config SENSORS_ISL29018
         tristate "ISL 29018 light and proximity sensor"
@@ -30,3 +42,5 @@ config TSL2583
 	help
 	 Provides support for the TAOS tsl2580, tsl2581 and tsl2583 devices.
 	 Access ALS data via iio, sysfs.
+
+endmenu
