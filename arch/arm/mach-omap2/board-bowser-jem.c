@@ -903,13 +903,6 @@ static struct i2c_board_info __initdata sdp4430_i2c_4_boardinfo[] = {
         },
 #endif
 // Anvoi, 2011/12/14, Porting Light sensor driver to ICS
-
-#ifdef CONFIG_MAX1161X
-	/* Maxim MAX11613 ADC */
-	{
-		I2C_BOARD_INFO("max11613", 0x34),
-	},
-#endif
 };
 
 // Anvoi, 2011/12/14, Porting Light sensor driver to ICS

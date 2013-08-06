@@ -57,5 +57,4 @@ obj-$(CONFIG_GCCORE)		+= gcx/gccore/
 obj-$(CONFIG_GCBV)		+= gcx/gcbv/
 obj-$(CONFIG_GCIOCTL)		+= gcx/gcioctl/
 obj-$(CONFIG_CACHE2DMANAGER)	+= cache-2dmanager/
-obj-$(CONFIG_MAX1161X)		+= max1161x.o
 obj-$(CONFIG_TATE_HALL_SENSORS) += hall.o
