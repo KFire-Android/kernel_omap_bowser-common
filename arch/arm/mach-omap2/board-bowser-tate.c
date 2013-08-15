@@ -727,7 +727,10 @@ static struct i2c_board_info __initdata sdp4430_i2c_2_boardinfo[] = {
 static struct mpu_platform_data gyro_platform_data = {
 	.int_config  = 0x10,
 	.level_shifter = 0,
-	.orientation = {  -1,  0,  0,
+	.orientation = {   1,  0,  0,
+			   0, -1,  0,
+			   0,  0,  1 },
+	.accel =       {  -1,  0,  0,
 			   0, -1,  0,
 			   0,  0,  1 },
 };
