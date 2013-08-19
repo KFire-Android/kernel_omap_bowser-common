@@ -138,7 +138,7 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 	if (mmc_can_erase(card)) {
 		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, mq->queue);
 		mq->queue->limits.max_discard_sectors = UINT_MAX;
-		if (card->erased_byte == 0)
+		if (card->erased_byte == 0 && !mmc_can_discard(card))
 			mq->queue->limits.discard_zeroes_data = 1;
 		mq->queue->limits.discard_granularity = card->pref_erase << 9;
 		if (mmc_can_secure_erase_trim(card))
