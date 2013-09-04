@@ -412,10 +412,40 @@ static struct platform_device *bowser_devices[] __initdata = {
 
 #endif  /*CONFIG_BACKLIGHT_LP855X*/
 
-//Allocate 27 MB for TILER1D slot size for WUXGA panel on JEM, total of 54 MB of TILER1D
+#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
+/*
+ * Pulled from stock ICS ROM and it's more than enough
+*/
 static struct dsscomp_platform_data dsscomp_config_wuxga = {
-               .tiler1d_slotsz = ( SZ_16M + SZ_2M + SZ_8M + SZ_1M ),
+               .tiler1d_slotsz = ( 24 * SZ_1M ),
 };
+#else
+/*
+ Allocate a safe 36 MB (34 MB by calculation) for TILER1D slot size for WUXGA panel on JEM, total of 72 MB of TILER1D
+ (This is essentially the screen size * 4 = 2x for wallpaper, 1x for launcher + nav bar and 1x for status bar)
+
+ These values are based on stock AOSP tablet UI home screen. JB needs more than ICS
+ because behavior of pulled down status bar has changed.
+
+ Rough calculations:
+
+ Wallpaper:
+ 15120.00 KiB | 2000 (2016) x 1920
+
+ Launcher:
+ 8460.00 KiB  | 1920 (1920) x 1128
+
+ StatusBar:
+ 9000.00 KiB  | 1920 (1920) x 1200
+
+ NavigationBar:
+ 540.00 KiB   | 1920 (1920) x   72
+
+*/
+static struct dsscomp_platform_data dsscomp_config_wuxga = {
+               .tiler1d_slotsz = ( 36 * SZ_1M ),
+};
+#endif
 
 #if defined(CONFIG_FB_OMAP2_NUM_FBS)
 #define OMAPLFB_NUM_DEV CONFIG_FB_OMAP2_NUM_FBS
