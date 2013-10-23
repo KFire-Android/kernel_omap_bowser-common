@@ -414,14 +414,15 @@ static struct platform_device *bowser_devices[] __initdata = {
 
 #ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE
 /*
- * Pulled from stock ICS ROM and it's more than enough
+ (This is essentially the screen size * 4 = 2x for wallpaper, 1x for launcher + nav bar and 1x for status bar)
+  800x1280 (*4BPP) = 4MB * 4 = 16MB and then double for HDMI = 32MB
 */
 static struct dsscomp_platform_data dsscomp_config_wuxga = {
-               .tiler1d_slotsz = ( 24 * SZ_1M ),
+               .tiler1d_slotsz = ( 32 * SZ_1M ),
 };
 #else
 /*
- Allocate a safe 36 MB (34 MB by calculation) for TILER1D slot size for WUXGA panel on JEM, total of 72 MB of TILER1D
+ Allocate a safe 34 MB (by calculation) for TILER1D slot size for WUXGA panel on JEM, total of 68 MB of TILER1D
  (This is essentially the screen size * 4 = 2x for wallpaper, 1x for launcher + nav bar and 1x for status bar)
 
  These values are based on stock AOSP tablet UI home screen. JB needs more than ICS
@@ -443,7 +444,7 @@ static struct dsscomp_platform_data dsscomp_config_wuxga = {
 
 */
 static struct dsscomp_platform_data dsscomp_config_wuxga = {
-               .tiler1d_slotsz = ( 36 * SZ_1M ),
+               .tiler1d_slotsz = ( 68 * SZ_1M ),
 };
 #endif
 
