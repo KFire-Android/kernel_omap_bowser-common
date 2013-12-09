@@ -3,9 +3,17 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 
+#ifdef CONFIG_MACH_OMAP4_BOWSER
+#include <asm/system.h>
+#endif
+
 static int cmdline_proc_show(struct seq_file *m, void *v)
 {
+#ifdef CONFIG_MACH_OMAP4_BOWSER
+	seq_printf(m, "%s androidboot.serialno=%s\n", saved_command_line, system_serial16);
+#else
 	seq_printf(m, "%s\n", saved_command_line);
+#endif
 	return 0;
 }
 
