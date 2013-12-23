@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_sdio.c 352730 2012-08-23 20:55:11Z $
+ * $Id: dhd_sdio.c 309234 2012-01-19 01:44:16Z $
  */
 
 #include <typedefs.h>
@@ -65,11 +65,6 @@
 #include <dhd_dbg.h>
 #include <dhdioctl.h>
 #include <sdiovar.h>
-
-// for IDME API's
-#include <mach/bowser_idme_init.h>
-extern int idme_get_board_type(void);
-//end
 
 #ifndef DHDSDIO_MEM_DUMP_FNAME
 #define DHDSDIO_MEM_DUMP_FNAME         "mem_dump"
@@ -544,8 +539,6 @@ dhdsdio_set_siaddr_window(dhd_bus_t *bus, uint32 address)
 static int
 dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 {
-#define HT_AVAIL_ERROR_MAX	10
-	static int ht_avail_error = 0;
 	int err;
 	uint8 clkctl, clkreq, devctl;
 	bcmsdh_info_t *sdh;
@@ -558,22 +551,18 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 	clkctl = 0;
 	sdh = bus->sdh;
 
+
 	if (on) {
 		/* Request HT Avail */
 		clkreq = bus->alp_only ? SBSDIO_ALP_AVAIL_REQ : SBSDIO_HT_AVAIL_REQ;
 
+
+
+
 		bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR, clkreq, &err);
 		if (err) {
-			ht_avail_error++;
-			if (ht_avail_error < HT_AVAIL_ERROR_MAX) {
-				DHD_ERROR(("%s: HT Avail request error: %d\n", __FUNCTION__, err));
-			} else {
-				if (ht_avail_error == HT_AVAIL_ERROR_MAX)
-					dhd_os_send_hang_message(bus->dhd);
-			}
+			DHD_ERROR(("%s: HT Avail request error: %d\n", __FUNCTION__, err));
 			return BCME_ERROR;
-		} else {
-			ht_avail_error = 0;
 		}
 
 		if (pendok &&
@@ -625,7 +614,6 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 		if (!SBSDIO_CLKAV(clkctl, bus->alp_only)) {
 			DHD_ERROR(("%s: HT Avail timeout (%d): clkctl 0x%02x\n",
 			           __FUNCTION__, PMU_MAX_TRANSITION_DLY, clkctl));
-			dhd_os_send_hang_message(bus->dhd);
 			return BCME_ERROR;
 		}
 
@@ -813,8 +801,7 @@ dhdsdio_clkctl(dhd_bus_t *bus, uint target, bool pendok)
 #ifdef DHD_DEBUG
 		if (dhd_console_ms == 0)
 #endif /* DHD_DEBUG */
-		if (bus->poll == 0)
-			dhd_os_wd_timer(bus->dhd, 0);
+		dhd_os_wd_timer(bus->dhd, 0);
 		break;
 	}
 #ifdef DHD_DEBUG
@@ -1381,13 +1368,7 @@ dhd_bus_txctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 		/* Send from dpc */
 		bus->ctrl_frame_buf = frame;
 		bus->ctrl_frame_len = len;
-		if (!bus->dpc_sched) {
-			bus->dpc_sched = TRUE;
-			dhd_sched_dpc(bus->dhd);
-		}
-		if (bus->ctrl_frame_stat) {
-			dhd_wait_for_event(bus->dhd, &bus->ctrl_frame_stat);
-		}
+		dhd_wait_for_event(bus->dhd, &bus->ctrl_frame_stat);
 		if (bus->ctrl_frame_stat == FALSE) {
 			DHD_INFO(("%s: ctrl_frame_stat == FALSE\n", __FUNCTION__));
 			ret = 0;
@@ -1472,7 +1453,7 @@ dhd_bus_rxctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 {
 	int timeleft;
 	uint rxlen = 0;
-	bool pending = FALSE;
+	bool pending;
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
@@ -1499,9 +1480,8 @@ dhd_bus_rxctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 		dhd_os_sdunlock(bus->dhd);
 #endif /* DHD_DEBUG */
 	} else if (pending == TRUE) {
-		/* possibly fw hangs so never responsed back */
-		DHD_ERROR(("%s: signal pending\n", __FUNCTION__));
-		return -EINTR;
+		DHD_CTL(("%s: canceled\n", __FUNCTION__));
+		return -ERESTARTSYS;
 	} else {
 		DHD_CTL(("%s: resumed for unknown reason?\n", __FUNCTION__));
 #ifdef DHD_DEBUG
@@ -3081,13 +3061,6 @@ dhd_bus_stop(struct dhd_bus *bus, bool enforce_mutex)
 	bus->rxskip = FALSE;
 	bus->tx_seq = bus->rx_seq = 0;
 
-	/* Set to a safe default.  It gets updated when we
-	 * receive a packet from the fw but when we reset,
-	 * we need a safe default to be able to send the
-	 * initial mac address.
-	 */
-	bus->tx_max = 4;
-
 	if (enforce_mutex)
 		dhd_os_sdunlock(bus->dhd);
 }
@@ -3142,9 +3115,9 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 	dhd_timeout_start(&tmo, DHD_WAIT_F2RDY * 1000);
 
 	ready = 0;
-	do {
-		ready = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_IORDY, NULL);
-	} while (ready != enable && !dhd_timeout_expired(&tmo));
+	while (ready != enable && !dhd_timeout_expired(&tmo))
+	        ready = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_IORDY, NULL);
+
 
 	DHD_INFO(("%s: enable 0x%02x, ready 0x%02x (waited %uus)\n",
 	          __FUNCTION__, enable, ready, tmo.elapsed));
@@ -4614,32 +4587,8 @@ clkwait:
 		bcmsdh_intr_enable(sdh);
 	}
 
-#if defined(OOB_INTR_ONLY) && !defined(HW_OOB)
-	/* In case of SW-OOB(using edge trigger),
-	 * Check interrupt status in the dongle again after enable irq on the host.
-	 * and rechedule dpc if interrupt is pended in the dongle.
-	 * There is a chance to miss OOB interrupt while irq is disabled on the host.
-	 * No need to do this with HW-OOB(level trigger)
-	 */
-	R_SDREG(newstatus, &regs->intstatus, retries);
-	if (bcmsdh_regfail(bus->sdh))
-		newstatus = 0;
-	if (newstatus & bus->hostintmask) {
-		bus->ipend = TRUE;
-		resched = TRUE;
-	}
-#endif /* defined(OOB_INTR_ONLY) && !defined(HW_OOB) */
-
 	if (TXCTLOK(bus) && bus->ctrl_frame_stat && (bus->clkstate == CLK_AVAIL))  {
 		int ret, i;
-		uint8* frame_seq = bus->ctrl_frame_buf + SDPCM_FRAMETAG_LEN;
-
-		if (*frame_seq != bus->tx_seq) {
-			DHD_INFO(("%s IOCTL frame seq lag detected!"
-				" frm_seq:%d != bus->tx_seq:%d, corrected\n",
-				__FUNCTION__, *frame_seq, bus->tx_seq));
-			*frame_seq = bus->tx_seq;
-		}
 
 		ret = dhd_bcmsdh_send_buf(bus, bcmsdh_cur_sbwad(sdh), SDIO_FUNC_2, F2SYNC,
 		                      (uint8 *)bus->ctrl_frame_buf, (uint32)bus->ctrl_frame_len,
@@ -5204,7 +5153,7 @@ done:
 }
 #endif /* DHD_DEBUG */
 
-
+#ifdef DHD_DEBUG
 static void
 dhd_dump_cis(uint fn, uint8 *cis)
 {
@@ -5231,63 +5180,8 @@ dhd_dump_cis(uint fn, uint8 *cis)
 	}
 	if ((byte % 16) != 15)
 		DHD_INFO(("\n"));
-
-	DHD_INFO(("-----\n    byte = %d \n", byte));
 }
-
-#define USI_MODULE_SIGNATURE			{0x55, 0x53, 0x49}		//'U','S','I'.
-#define SEMCO_MODULE_SIGNATURE			{0x53, 0x45, 0x4D}		//'S','E','M'. But SEMCO does not store signature in OTP, yet.
-
-#define MODULE_MAKER_TABLE_SIZE		2
-static uint8 moduleMakerSignature[MODULE_MAKER_TABLE_SIZE][3] = {SEMCO_MODULE_SIGNATURE, USI_MODULE_SIGNATURE};
-static char* moduleMakerName[MODULE_MAKER_TABLE_SIZE] = {"semco", "usi"};
-static int defaultModuleMaker = 0;	// SEMCO
-
-static int
-lab_detect_module_maker(uint fn, uint8 *cis)
-{
-	uint byte, tag, tdata;
-	uint i, len;
-
-	//printk("%s: Function %d CIS:\n", __FUNCTION__, fn);
-
-	// The following logic is from dhd_dump_cis().
-	for (tdata = byte = 0; byte < SBSDIO_CIS_SIZE_LIMIT; byte++) {
-
-		if (!tdata--) {
-			tag = cis[byte];
-			if (tag == 0xff)
-				break;
-			else if (!tag)
-				tdata = 0;
-			else if ((byte + 1) < SBSDIO_CIS_SIZE_LIMIT)
-				tdata = cis[byte + 1] + 1;
-		}
-	}
-
-	len = byte;
-
-	// There are <len> bytes of useful data in CIS.
-	// Now, look for a pattern in it.
-	//printk("len = %d\n", len);
-
-	for (byte = 0; byte < (len-5); byte++) {
-		for (i = 0; i < MODULE_MAKER_TABLE_SIZE; i++) {
-			if ((cis[byte+0]   == 0x80) &&
-				//The second byte indicates record length. Ignored for signature comparison.
-				(cis[byte+2] == 0x81) &&
-				(cis[byte+3] == moduleMakerSignature[i][0]) &&
-				(cis[byte+4] == moduleMakerSignature[i][1]) &&
-				(cis[byte+5] == moduleMakerSignature[i][2])   ) {
-
-				// We have a match. Return table index.
-				return i;
-			}
-		}
-	}
-
-	return -1;
-}
+#endif /* DHD_DEBUG */
 
 static bool
 dhdsdio_chipmatch(uint16 chipid)
@@ -5535,20 +5429,17 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 		clkctl = bcmsdh_cfg_read(sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR, &err);
 
 	if (err || ((clkctl & ~SBSDIO_AVBITS) != DHD_INIT_CLKCTL1)) {
-		DHD_ERROR(("%s: ChipClkCSR access: err %d wrote 0x%02x read 0x%02x\n",
-		           __FUNCTION__, err, DHD_INIT_CLKCTL1, clkctl));
+		DHD_ERROR(("dhdsdio_probe: ChipClkCSR access: err %d wrote 0x%02x read 0x%02x\n",
+		           err, DHD_INIT_CLKCTL1, clkctl));
 		goto fail;
 	}
 
-	// The following logic reads the OTP and determines an appropriate NVRAM file.
-	if (1) {
+
+#ifdef DHD_DEBUG
+	if (DHD_INFO_ON()) {
 		uint fn, numfn;
 		uint8 *cis[SDIOD_MAX_IOFUNCS];
 		int err = 0;
-		int moduleMaker = -1;
-		char *module_maker_name;
-		char new_nv_path[256] = "";
-		int boardType;
 
 		numfn = bcmsdh_query_iofnum(sdh);
 		ASSERT(numfn <= SDIOD_MAX_IOFUNCS);
@@ -5575,75 +5466,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 				MFREE(osh, cis[fn], SBSDIO_CIS_SIZE_LIMIT);
 				break;
 			}
-
-			if (DHD_INFO_ON()) {
-				dhd_dump_cis(fn, cis[fn]);
-			}
-
-			// Try to figure out which WiFi module do we have on the board.
-
-			if (moduleMaker < 0) {
-				moduleMaker = lab_detect_module_maker(fn, cis[fn]);
-			}
-		}
-
-		printk("%s: module maker = %d\n", __FUNCTION__, moduleMaker);
-
-		if (moduleMaker < MODULE_MAKER_TABLE_SIZE) {
-
-			if (moduleMaker >= 0) {
-				module_maker_name = moduleMakerName[moduleMaker];
-				DHD_ERROR(("%s: module maker name = %s\n", __FUNCTION__, module_maker_name));
-			}
-			else {
-				module_maker_name = moduleMakerName[defaultModuleMaker];
-				DHD_ERROR(("%s: module maker name = (default: %s)\n", __FUNCTION__, module_maker_name));
-			}
-
-			// Adjust the firmware path accordingly
-			DHD_ERROR(("%s: nv_path was %s\n", __FUNCTION__, nv_path));
-
-			boardType = idme_get_board_type();
-
-			if ((boardType == BOARD_TYPE_TATE) 		||
-				(boardType == BOARD_TYPE_TATE_EVT3)     ||
-				(boardType == BOARD_TYPE_JEM_WIFI) 	||
-				(boardType == BOARD_TYPE_JEM_WAN) 	||
-				(boardType == BOARD_TYPE_RADLEY)  		) {
-
-				bcm_strcpy_s(new_nv_path, sizeof(new_nv_path), "/system/etc/wifi/nvram_");
-
-				switch (boardType) {
-				case BOARD_TYPE_TATE:
-				case BOARD_TYPE_TATE_EVT3:
-					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "tate_");
-					break;
-				case BOARD_TYPE_JEM_WIFI:
-					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "jem_");
-					break;
-				case BOARD_TYPE_JEM_WAN:
-					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "jem-wan_");
-					break;
-				case BOARD_TYPE_RADLEY:
-					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "radley_");
-					break;
-				default:
-					// should not get here ...
-					DHD_ERROR(("%s: error in board type checking\n", __FUNCTION__));
-					bcm_strcat_s(new_nv_path, sizeof(new_nv_path), "tate_");
-					break;
-				}
-
-				bcm_strcat_s(new_nv_path, sizeof(nv_path), module_maker_name);
-				bcm_strcat_s(new_nv_path, sizeof(new_nv_path), ".txt");
-			}
-			else {
-				// We couldn't figure out the board type. Fall back to use the generic name.
-				bcm_strcpy_s(new_nv_path, sizeof(new_nv_path), "/system/etc/wifi/bcmdhd.cal");
-			}
-
-			bcm_strcpy_s(nv_path, sizeof(nv_path), new_nv_path);
-			DHD_ERROR(("%s: nv_path set to %s\n", __FUNCTION__, nv_path));
+			dhd_dump_cis(fn, cis[fn]);
 		}
 
 		while (fn-- > 0) {
@@ -5656,7 +5479,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 			goto fail;
 		}
 	}
-
+#endif /* DHD_DEBUG */
 
 	/* si_attach() will provide an SI handle and scan the backplane */
 	if (!(bus->sih = si_attach((uint)devid, osh, regsva, DHD_BUS, sdh,
@@ -6334,7 +6157,6 @@ dhd_bcmsdh_send_buf(dhd_bus_t *bus, uint32 addr, uint fn, uint flags, uint8 *buf
 uint
 dhd_bus_chip(struct dhd_bus *bus)
 {
-	ASSERT(bus);
 	ASSERT(bus->sih != NULL);
 	return bus->sih->chip;
 }
@@ -6342,7 +6164,6 @@ dhd_bus_chip(struct dhd_bus *bus)
 void *
 dhd_bus_pub(struct dhd_bus *bus)
 {
-	ASSERT(bus);
 	return bus->dhd;
 }
 
@@ -6389,6 +6210,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			bus->dhd->dongle_reset = TRUE;
 			bus->dhd->up = FALSE;
 			dhd_os_sdunlock(dhdp);
+
 			DHD_TRACE(("%s:  WLAN OFF DONE\n", __FUNCTION__));
 			/* App can now remove power from device */
 		} else
@@ -6457,30 +6279,6 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 		}
 	}
 	return bcmerror;
-}
-
-/* Get Chip ID version */
-uint dhd_bus_chip_id(dhd_pub_t *dhdp)
-{
-	dhd_bus_t *bus = dhdp->bus;
-
-	return bus->sih->chip;
-}
-
-/* Get Chip Rev ID version */
-uint dhd_bus_chiprev_id(dhd_pub_t *dhdp)
-{
-	dhd_bus_t *bus = dhdp->bus;
-
-	return bus->sih->chiprev;
-}
-
-/* Get Chip Pkg ID version */
-uint dhd_bus_chippkg_id(dhd_pub_t *dhdp)
-{
-	dhd_bus_t *bus = dhdp->bus;
-
-	return bus->sih->chippkg;
 }
 
 int

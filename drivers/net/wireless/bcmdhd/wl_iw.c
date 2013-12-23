@@ -64,7 +64,7 @@ typedef const struct si_pub  si_t;
 #endif
 
 
-#define JF2MS jiffies_to_msecs(jiffies)
+#define JF2MS ((((jiffies / HZ) * 1000) + ((jiffies % HZ) * 1000) / HZ))
 
 #ifdef COEX_DBG       
 #define WL_TRACE_COEX(x) printf("TS:%lu ", JF2MS); \
@@ -148,7 +148,7 @@ static struct mutex	wl_softap_lock;
 #include <bcmsdbus.h>
 extern void dhd_customer_gpio_wlan_ctrl(int onoff);
 extern uint dhd_dev_reset(struct net_device *dev, uint8 flag);
-extern int dhd_dev_init_ioctl(struct net_device *dev);
+extern void dhd_dev_init_ioctl(struct net_device *dev);
 
 uint wl_msg_level = WL_ERROR_VAL;
 
@@ -162,8 +162,11 @@ uint wl_msg_level = WL_ERROR_VAL;
 #define htodchanspec(i) i
 #define dtohchanspec(i) i
 
+#ifdef CONFIG_WIRELESS_EXT
+
 extern struct iw_statistics *dhd_get_wireless_stats(struct net_device *dev);
 extern int dhd_wait_pend8021x(struct net_device *dev);
+#endif 
 
 #if WIRELESS_EXT < 19
 #define IW_IOCTL_IDX(cmd)	((cmd) - SIOCIWFIRST)
@@ -1119,7 +1122,7 @@ wl_iw_set_btcoex_dhcp(
 }
 
 static int
-wl_iw_set_suspend_opt(
+wl_iw_set_suspend(
 struct net_device *dev,
 struct iw_request_info *info,
 union iwreq_data *wrqu,
@@ -1130,47 +1133,22 @@ char *extra
 	int ret_now;
 	int ret = 0;
 
-	suspend_flag = *(extra + strlen(SETSUSPENDOPT_CMD) + 1) - '0';
+	suspend_flag = *(extra + strlen(SETSUSPEND_CMD) + 1) - '0';
 
 	if (suspend_flag != 0)
 		suspend_flag = 1;
 
 	ret_now = net_os_set_suspend_disable(dev, suspend_flag);
 
+	
 	if (ret_now != suspend_flag) {
-		if (!(ret = net_os_set_suspend(dev, ret_now, 1)))
+		if (!(ret = net_os_set_suspend(dev, ret_now)))
 			WL_ERROR(("%s: Suspend Flag %d -> %d\n",
 			          __FUNCTION__, ret_now, suspend_flag));
 		else
 			WL_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
 	}
 
-	return ret;
-}
-
-static int
-wl_iw_set_suspend_mode(
-struct net_device *dev,
-struct iw_request_info *info,
-union iwreq_data *wrqu,
-char *extra
-)
-{
-	int ret = 0;
-
-#if !defined(CONFIG_HAS_EARLYSUSPEND) || !defined(DHD_USE_EARLYSUSPEND)
-	int suspend_flag;
-
-	suspend_flag = *(extra + strlen(SETSUSPENDMODE_CMD) + 1) - '0';
-
-	if (suspend_flag != 0)
-		suspend_flag = 1;
-
-	if (!(ret = net_os_set_suspend(dev, suspend_flag, 0)))
-		WL_ERROR(("%s: Suspend Mode %d\n",__FUNCTION__,suspend_flag));
-	else
-		WL_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
-#endif
 	return ret;
 }
 
@@ -1705,7 +1683,7 @@ wl_iw_send_priv_event(
 	strcpy(extra, flag);
 	wrqu.data.length = strlen(extra);
 	wireless_send_event(dev, cmd, &wrqu, extra);
-	net_os_wake_lock_ctrl_timeout_enable(dev, DHD_EVENT_TIMEOUT_MS);
+	net_os_wake_lock_timeout_enable(dev, DHD_EVENT_TIMEOUT_MS);
 	WL_TRACE(("Send IWEVCUSTOM Event as %s\n", extra));
 
 	return 0;
@@ -3284,7 +3262,7 @@ _iscan_sysioc_thread(void *data)
 				rtnl_unlock();
 #endif
 				
-				mod_timer(&iscan->timer, jiffies + msecs_to_jiffies(iscan->timer_ms));
+				mod_timer(&iscan->timer, jiffies + iscan->timer_ms*HZ/1000);
 				iscan->timer_on = 1;
 				break;
 			case WL_SCAN_RESULTS_SUCCESS:
@@ -3295,7 +3273,7 @@ _iscan_sysioc_thread(void *data)
 			case WL_SCAN_RESULTS_PENDING:
 				WL_TRACE(("iscanresults pending\n"));
 				
-				mod_timer(&iscan->timer, jiffies + msecs_to_jiffies(iscan->timer_ms));
+				mod_timer(&iscan->timer, jiffies + iscan->timer_ms*HZ/1000);
 				iscan->timer_on = 1;
 				break;
 			case WL_SCAN_RESULTS_ABORTED:
@@ -3395,9 +3373,9 @@ wl_iw_run_ss_cache_timer(int kick_off)
 	if (*timer) {
 		if (kick_off) {
 #ifdef CONFIG_PRESCANNED
-			(*timer)->expires = jiffies + msecs_to_jiffies(70000);
+			(*timer)->expires = jiffies + 70000 * HZ / 1000;
 #else
-			(*timer)->expires = jiffies + msecs_to_jiffies(30000);
+			(*timer)->expires = jiffies + 30000 * HZ / 1000;	
 #endif
 			add_timer(*timer);
 			WL_TRACE(("%s : timer starts \n", __FUNCTION__));
@@ -3715,7 +3693,7 @@ wl_iw_iscan_set_scan_broadcast_prep(struct net_device *dev, uint flag)
 		rtnl_unlock();
 #endif
 
-	mod_timer(&iscan->timer, jiffies + msecs_to_jiffies(iscan->timer_ms));
+	mod_timer(&iscan->timer, jiffies + iscan->timer_ms*HZ/1000);
 
 	iscan->timer_on = 1;
 
@@ -6007,7 +5985,7 @@ wl_iw_combined_scan_set(struct net_device *dev, wlc_ssid_t* ssids_local, int nss
 	iscan->list_cur = iscan->list_hdr;
 	iscan->iscan_state = ISCAN_STATE_SCANING;
 	wl_iw_set_event_mask(dev);
-	mod_timer(&iscan->timer, jiffies + msecs_to_jiffies(iscan->timer_ms));
+	mod_timer(&iscan->timer, jiffies + iscan->timer_ms*HZ/1000);
 
 	iscan->timer_on = 1;
 
@@ -7626,10 +7604,8 @@ wl_iw_set_priv(
 			ret = wl_iw_get_dtim_skip(dev, info, (union iwreq_data *)dwrq, extra);
 		else if (strnicmp(extra, DTIM_SKIP_SET_CMD, strlen(DTIM_SKIP_SET_CMD)) == 0)
 			ret = wl_iw_set_dtim_skip(dev, info, (union iwreq_data *)dwrq, extra);
-		else if (strnicmp(extra, SETSUSPENDOPT_CMD, strlen(SETSUSPENDOPT_CMD)) == 0)
-			ret = wl_iw_set_suspend_opt(dev, info, (union iwreq_data *)dwrq, extra);
-		else if (strnicmp(extra, SETSUSPENDMODE_CMD, strlen(SETSUSPENDMODE_CMD)) == 0)
-			ret = wl_iw_set_suspend_mode(dev, info, (union iwreq_data *)dwrq, extra);
+		else if (strnicmp(extra, SETSUSPEND_CMD, strlen(SETSUSPEND_CMD)) == 0)
+			ret = wl_iw_set_suspend(dev, info, (union iwreq_data *)dwrq, extra);
 		else if (strnicmp(extra, TXPOWER_SET_CMD, strlen(TXPOWER_SET_CMD)) == 0)
 			ret = wl_iw_set_txpower(dev, info, (union iwreq_data *)dwrq, extra);
 #if defined(PNO_SUPPORT)
@@ -8639,7 +8615,7 @@ _bt_dhcp_sysioc_thread(void *data)
 				WL_TRACE_COEX(("%s bt_dhcp stm: started \n", __FUNCTION__));
 				g_bt->bt_state = BT_DHCP_OPPORTUNITY_WINDOW;
 				mod_timer(&g_bt->timer,
-				          jiffies + msecs_to_jiffies(BT_DHCP_OPPORTUNITY_WINDOW_TIME));
+				          jiffies + BT_DHCP_OPPORTUNITY_WINDOW_TIME*HZ/1000);
 				g_bt->timer_on = 1;
 				break;
 
@@ -8656,7 +8632,7 @@ _bt_dhcp_sysioc_thread(void *data)
 				
 				if (g_bt->dev) wl_iw_bt_flag_set(g_bt->dev, TRUE);
 				g_bt->bt_state = BT_DHCP_FLAG_FORCE_TIMEOUT;
-				mod_timer(&g_bt->timer, jiffies + msecs_to_jiffies(BT_DHCP_FLAG_FORCE_TIME));
+				mod_timer(&g_bt->timer, jiffies + BT_DHCP_FLAG_FORCE_TIME*HZ/1000);
 				g_bt->timer_on = 1;
 				break;
 

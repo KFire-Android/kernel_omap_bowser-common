@@ -240,8 +240,7 @@ static void dhd_mon_if_set_multicast_list(struct net_device *ndev)
 	if (mon_if == NULL || mon_if->real_ndev == NULL) {
 		MON_PRINT(" cannot find matched net dev, skip the packet\n");
 	} else {
-		MON_PRINT("enter, if name: %s, matched if name %s\n",
-		ndev->name, mon_if->real_ndev->name);
+		MON_PRINT("enter, if name: %s, matched if name %s\n", ndev->name, mon_if->real_ndev->name);
 	}
 }
 
@@ -254,8 +253,7 @@ static int dhd_mon_if_change_mac(struct net_device *ndev, void *addr)
 	if (mon_if == NULL || mon_if->real_ndev == NULL) {
 		MON_PRINT(" cannot find matched net dev, skip the packet\n");
 	} else {
-		MON_PRINT("enter, if name: %s, matched if name %s\n",
-		ndev->name, mon_if->real_ndev->name);
+		MON_PRINT("enter, if name: %s, matched if name %s\n", ndev->name, mon_if->real_ndev->name);
 	}
 	return ret;
 }

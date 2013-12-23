@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_linux.c 352863 2012-08-24 04:48:50Z $
+ * $Id: bcmsdh_linux.c 308641 2012-01-17 02:18:02Z $
  */
 
 /**
@@ -404,10 +404,6 @@ bcmsdh_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* match this pci device with what we support */
 	/* we can't solely rely on this to believe it is our SDIO Host Controller! */
 	if (!bcmsdh_chipmatch(pdev->vendor, pdev->device)) {
-		if (pdev->vendor == VENDOR_BROADCOM) {
-			SDLX_MSG(("%s: Unknown Broadcom device (vendor: %#x, device: %#x).\n",
-				__FUNCTION__, pdev->vendor, pdev->device));
-		}
 		return -ENODEV;
 	}
 
@@ -624,6 +620,13 @@ int bcmsdh_register_oob_intr(void * dhdp)
 	return 0;
 }
 
+void *bcmsdh_get_drvdata(void)
+{
+	if (!sdhcinfo)
+		return NULL;
+	return dev_get_drvdata(sdhcinfo->dev);
+}
+
 void bcmsdh_set_irq(int flag)
 {
 	if (sdhcinfo->oob_irq_registered && sdhcinfo->oob_irq_enable_flag != flag) {
@@ -651,15 +654,6 @@ void bcmsdh_unregister_oob_intr(void)
 }
 #endif /* defined(OOB_INTR_ONLY) */
 
-#if defined(BCMLXSDMMC)
-void *bcmsdh_get_drvdata(void)
-{
-	if (!sdhcinfo)
-		return NULL;
-	return dev_get_drvdata(sdhcinfo->dev);
-}
-#endif
-
 /* Module parameters specific to each host-controller driver */
 
 extern uint sd_msglevel;	/* Debug message level */
@@ -686,11 +680,6 @@ module_param(sd_f2_blocksize, int, 0);
 #ifdef BCMSDIOH_STD
 extern int sd_uhsimode;
 module_param(sd_uhsimode, int, 0);
-#endif
-
-#ifdef BCMSDIOH_TXGLOM
-extern uint sd_txglom;
-module_param(sd_txglom, uint, 0);
 #endif
 
 #ifdef BCMSDH_MODULE

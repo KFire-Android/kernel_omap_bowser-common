@@ -795,14 +795,8 @@ enum nl80211_commands {
  *
  * @NL80211_ATTR_MAX_NUM_SCAN_SSIDS: number of SSIDs you can scan with
  *	a single scan request, a wiphy attribute.
- * @NL80211_ATTR_MAX_NUM_SCHED_SCAN_SSIDS: number of SSIDs you can
- *	scan with a single scheduled scan request, a wiphy attribute.
  * @NL80211_ATTR_MAX_SCAN_IE_LEN: maximum length of information elements
  *	that can be added to a scan request
- * @NL80211_ATTR_MAX_SCHED_SCAN_IE_LEN: maximum length of information
- *	elements that can be added to a scheduled scan request
- * @NL80211_ATTR_MAX_MATCH_SETS: maximum number of sets that can be
- *	used with @NL80211_ATTR_SCHED_SCAN_MATCH, a wiphy attribute.
  *
  * @NL80211_ATTR_SCAN_FREQUENCIES: nested attribute with frequencies (in MHz)
  * @NL80211_ATTR_SCAN_SSIDS: nested attribute with SSIDs, leave out for passive
@@ -1043,24 +1037,6 @@ enum nl80211_commands {
 
  * @NL80211_ATTR_SCHED_SCAN_INTERVAL: Interval between scheduled scan
  *	cycles, in msecs.
-
- * @NL80211_ATTR_SCHED_SCAN_MATCH: Nested attribute with one or more
- *	sets of attributes to match during scheduled scans.  Only BSSs
- *	that match any of the sets will be reported.  These are
- *	pass-thru filter rules.
- *	For a match to succeed, the BSS must match all attributes of a
- *	set.  Since not every hardware supports matching all types of
- *	attributes, there is no guarantee that the reported BSSs are
- *	fully complying with the match sets and userspace needs to be
- *	able to ignore them by itself.
- *	Thus, the implementation is somewhat hardware-dependent, but
- *	this is only an optimization and the userspace application
- *	needs to handle all the non-filtered results anyway.
- *	If the match attributes don't make sense when combined with
- *	the values passed in @NL80211_ATTR_SCAN_SSIDS (eg. if an SSID
- *	is included in the probe request, but the match attributes
- *	will never let it go through), -EINVAL may be returned.
- *	If ommited, no filtering is done.
  *
  * @NL80211_ATTR_INTERFACE_COMBINATIONS: Nested attribute listing the supported
  *	interface combinations. In each nested item, it contains attributes
