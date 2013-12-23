@@ -666,7 +666,6 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 	}
 
 	pm_runtime_get_sync(dev->parent);
-	*pdata->usbhs_update_sar = 1;
 
 	/*
 	 * An undocumented "feature" in the OMAP3 EHCI controller,
