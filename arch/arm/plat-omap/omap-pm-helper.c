@@ -291,47 +291,9 @@ int omap_pm_apply_min_bus_tput_helper_l(void)
 
 	ret = omap_device_scale(&dummy_l3_dev, l3_dev, target_level);
 	if (ret)
-#ifdef CONFIG_OMAP4_DPLL_CASCADING
-		pr_debug("Failed: change interconnect bandwidth to %ld\n",
-		     target_level);
-#else
 		pr_err("Failed: change interconnect bandwidth to %ld\n",
 		     target_level);
-#endif
-	return ret;
-}
-
-int omap_pm_apply_min_bus_tput_helper(void)
-{
-	int ret;
-
-	mutex_lock(&bus_tput_mutex);
-	ret = omap_pm_apply_min_bus_tput_helper_l();
-	mutex_unlock(&bus_tput_mutex);
-
-	return ret;
-}
-
-int omap_pm_set_min_bus_tput_helper(struct device *dev, u8 agent_id, long r)
-{
-
-	int ret = 0;
-
-	mutex_lock(&bus_tput_mutex);
-
-	if (r == -1)
-		remove_req_tput(dev);
-	else
-		add_req_tput(dev, r);
-
-	/* Don't bother to attempt the device scale if the power management
-	 * subsystem has not been initialized yet since it will just fail.  PM
-	 * will call back after it has come up to enforce any pending tput
-	 * constraints.
-	 */
-	if (omap_pm_is_ready())
-		ret = omap_pm_apply_min_bus_tput_helper_l();
-
+unlock:
 	mutex_unlock(&bus_tput_mutex);
 	return ret;
 }
