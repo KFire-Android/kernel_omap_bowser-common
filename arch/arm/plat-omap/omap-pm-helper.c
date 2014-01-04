@@ -298,6 +298,41 @@ unlock:
 	return ret;
 }
 
+int omap_pm_apply_min_bus_tput_helper(void)
+{
+        int ret;
+
+        mutex_lock(&bus_tput_mutex);
+        ret = omap_pm_apply_min_bus_tput_helper_l();
+        mutex_unlock(&bus_tput_mutex);
+
+        return ret;
+}
+
+int omap_pm_set_min_bus_tput_helper(struct device *dev, u8 agent_id, long r)
+{
+
+        int ret = 0;
+
+        mutex_lock(&bus_tput_mutex);
+
+        if (r == -1)
+                remove_req_tput(dev);
+        else
+                add_req_tput(dev, r);
+
+        /* Don't bother to attempt the device scale if the power management
+         * subsystem has not been initialized yet since it will just fail. PM
+         * will call back after it has come up to enforce any pending tput
+         * constraints.
+         */
+        if (omap_pm_is_ready())
+                ret = omap_pm_apply_min_bus_tput_helper_l();
+
+        mutex_unlock(&bus_tput_mutex);
+        return ret;
+}
+
 int omap_pm_set_max_dev_wakeup_lat_helper(struct device *req_dev,
 					  struct device *dev, long t)
 {
