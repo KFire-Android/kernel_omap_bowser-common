@@ -90,6 +90,8 @@ static int ohci_omap3_bus_resume(struct usb_hcd *hcd)
 	if (dev->parent)
 		pm_runtime_get_sync(dev->parent);
 
+	*pdata->usbhs_update_sar = 1;
+
 	return ohci_bus_resume(hcd);
 }
 
@@ -226,6 +228,7 @@ static int __devinit ohci_hcd_omap3_probe(struct platform_device *pdev)
 	hcd->regs =  regs;
 
 	pm_runtime_get_sync(dev->parent);
+	*pdata->usbhs_update_sar = 1;
 
 	ohci_hcd_init(hcd_to_ohci(hcd));
 
