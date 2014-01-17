@@ -2,6 +2,7 @@
 #define _BWAN_H
 
 #define WAN_USB_RESUME_GPIO    15
+#define WAN_USB_EN_GPIO        20
 
 struct bwan_platform_data {
 	void (*init)(void);

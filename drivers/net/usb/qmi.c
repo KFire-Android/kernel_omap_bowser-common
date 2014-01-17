@@ -15,6 +15,7 @@
 #include <linux/wakelock.h>
 
 #define MAX_RMNET_DEVS  (2)
+#define qmi_misc_dev_kobj(qmi) (qmi->qmi_misc_dev.this_device->kobj)
 
 static int qmi_rmnet_bind(struct usbnet *, struct usb_interface *);
 static int qmi_remote_wakeup_init(struct qmi_private *qmi);
@@ -698,7 +699,7 @@ static int qmi_probe (struct usb_interface *intf,
 		qmi_autopm_put_interface_async(qmi_priv);
 	}
 	spin_lock_init(&wakeup_lock);
-	wake_lock_init(&wlock,WAKE_LOCK_SUSPEND,"");
+	wake_lock_init(&wlock,WAKE_LOCK_SUSPEND,"qmi_wake");
 	atomic_set(&qmi_priv->usb_connected, 1);
 	return 0;
 
@@ -711,10 +712,11 @@ failed:
 static void qmi_disconnect (struct usb_interface *intf)
 {
 	struct qmi_private *qmi = usb_get_intfdata(intf);
-	dbg("QMI disconnecting...");
+	pr_info("QMI disconnecting...\n");
 	qmi->qmi_intr_ep = NULL;
 	qmi->read_wake_cond = 2;
 	atomic_set(&qmi->usb_connected, 0);
+
 	wake_up(&qmi->read_wait_q);
 
 	if (waitqueue_active(&qmi->read_poll_q)) {
@@ -753,6 +755,7 @@ static int qmi_suspend (struct usb_interface *intf, pm_message_t message)
 	}
 
 	wake_unlock(&wlock);
+	pr_info("%s: suspended\n",__func__);
 	return retval;
 }
 
@@ -761,6 +764,7 @@ static int qmi_resume(struct usb_interface *intf)
 	struct qmi_private *qmi = usb_get_intfdata(intf);
 	int err = 0;
 	unsigned long flags;
+	char *device_resume[] = {"QMI RESUME", NULL};
 
 	wake_lock(&wlock);
 
@@ -777,18 +781,22 @@ static int qmi_resume(struct usb_interface *intf)
 	if (qmi->qmi_intr_ep) {
 
 		if (qmi->intr_urb->hcpriv) {
+			pr_err("%s: intr urb already submitted\n",__func__);
 			return err;
 		}
 
 		err = qmi_autopm_get_interface_async(qmi);
 
 		if (err) {
+			pr_err("%s: can not get interface. err = %d\n",
+				__func__,err);
 			return err;
 		}
 
 		err = usb_submit_urb(qmi->intr_urb, GFP_ATOMIC);
 
 		if (err) {
+			pr_err("%s: failed to submit intr urb\n",__func__);
 			qmi_autopm_put_interface_async(qmi);
 			return err;
 		}
@@ -803,6 +811,9 @@ static int qmi_resume(struct usb_interface *intf)
 			msecs_to_jiffies(QMI_CONTROL_MSG_TIMEOUT_MS));
 	}
 
+	kobject_uevent_env(&(qmi_misc_dev_kobj(qmi)),
+		KOBJ_CHANGE, device_resume);
+	pr_info("%s: resumed\n",__func__);
 	return err;
 }
 
@@ -820,8 +831,11 @@ static struct usb_driver qmi_driver = {
 
 static int qmi_remote_wakeup_destroy(struct qmi_private *qmi)
 {
+	disable_irq_wake(gpio_to_irq(qmi->qmi_rw.gpio));
+	disable_irq(gpio_to_irq(qmi->qmi_rw.gpio));
 	free_irq(gpio_to_irq(qmi->qmi_rw.gpio), qmi);
 	gpio_free(qmi->qmi_rw.gpio);
+	wakeup_irq_enabled = 0;
 	return 0;
 }
 
@@ -837,6 +851,7 @@ static void qmi_rw_delayed_work(struct work_struct *work)
 
 	if (!gpio_get_value(qmi_rw->gpio)) {
 		pr_info("%s: Received spurious interrupt\n", __func__);
+		wake_unlock(&wlock);
 		return;
 	}
 	if ((err = qmi_autopm_get_interface(qmi))) {

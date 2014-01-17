@@ -323,23 +323,31 @@ static ssize_t bwan_usb_reset_store(struct kobject *kobj,
 
 	switch (var) {
 		case 1:
-			wake_lock_timeout(&bwan_lock, BWAN_WAKE_LOCK_TIMEOUT_SEC);
 			if (bwan_usb_reset == HIGH) {
 				break;
 			}
+			wake_lock_timeout(&bwan_lock, BWAN_WAKE_LOCK_TIMEOUT_SEC);
 			bwan_usb_reset = HIGH;
 
 			/* Disable USB */
 			gpio_direction_output(gpio_wan_usb_en, 0);
+			bwan_usb_en = LOW;
 
 			/* Power off the modem */
 			bwan_pulse_gpio_wan_shutdown(POWER_OFF_HOLD_TIME);
+			bwan_power = LOW;
+
 			mdelay(1000);
 			uhh_omap_reset_link_lock();
 
+			/* Power on the modem and enable USB */
 			ret = bwan_on(3);
 			mdelay(1000);
+			bwan_power = HIGH;
+
 			gpio_direction_output(gpio_wan_usb_en, 1);
+			bwan_usb_en = HIGH;
+
 			if (ret) {
 				printk("%s: Modem powered up\n", __func__);
 			} else {
@@ -474,17 +482,10 @@ static void bwan_sim_present(struct work_struct *dummy)
 
 	enable_irq(gpio_to_irq(gpio_wan_sim_present));
 
-	if (bwan_fw_rdy_status) {
-
-		/*
-		 * Right now, we send uevent about the SIM only if 
-		 * the modem is powered up. This has to be changed
-		 * once hardware rework is done.
-		 */
-		bwan_sim_present_status ? (envp[0] = "SIM_PRESENT=1") :
-				(envp[0] = "SIM_PRESENT=0");
-		kobject_uevent_env(bwan_kobj, KOBJ_CHANGE, envp);
-	}
+	/* Send uevent */
+	bwan_sim_present_status ? (envp[0] = "SIM_PRESENT=1") :
+			(envp[0] = "SIM_PRESENT=0");
+	kobject_uevent_env(bwan_kobj, KOBJ_CHANGE, envp);
 
 	return;
 }
