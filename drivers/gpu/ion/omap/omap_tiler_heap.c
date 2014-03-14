@@ -490,7 +490,7 @@ struct ion_heap *omap_tiler_heap_create(struct ion_platform_heap *data)
 		use_dynamic_pages = true;
 	else
 // Use dynamic memory allocations
-#if 1
+#if 0
 		use_dynamic_pages = true;
 #else
 		use_dynamic_pages = false;
