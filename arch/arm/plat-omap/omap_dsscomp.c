@@ -30,7 +30,7 @@
 #include <plat/dsscomp.h>
 
 static struct dsscomp_platform_data dsscomp_config = {
-		.tiler1d_slotsz = SZ_16M,
+		.tiler1d_slotsz = (24 << 20),
 };
 
 static struct platform_device omap_dsscomp_device = {
