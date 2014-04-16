@@ -370,11 +370,9 @@ static void __init build_mem_type_table(void)
 			 * - write combine device mem is SXCB=0001
 			 * (Uncached Normal memory)
 			 */
-#ifndef CONFIG_STRONGLY_ORDERED
 			mem_types[MT_DEVICE].prot_sect |= PMD_SECT_TEX(1);
 			mem_types[MT_DEVICE_NONSHARED].prot_sect |= PMD_SECT_TEX(1);
-#endif
-            mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_BUFFERABLE;
+			mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_BUFFERABLE;
 		} else if (cpu_is_xsc3()) {
 			/*
 			 * For Xscale3,

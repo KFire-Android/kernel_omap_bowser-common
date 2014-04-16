@@ -63,15 +63,6 @@ extern void __raw_readsl(const void __iomem *addr, void *data, int longlen);
 #define MT_DEVICE_CACHED	2
 #define MT_DEVICE_WC		3
 
-#ifndef MT_MEMORY_SO
-#define MT_MEMORY_SO            14
-#endif
-
-#ifdef CONFIG_STRONGLY_ORDERED
-#undef MT_DEVICE
-#define MT_DEVICE MT_MEMORY_SO
-#endif
-
 /*
  * types 4 onwards can be found in asm/mach/map.h and are undefined
  * for ioremap
