@@ -289,15 +289,6 @@ void flush_dcache_page(struct page *page)
 
 	mapping = page_mapping(page);
 
-	if (cache_is_vipt_nonaliasing()) {
-		if (!test_and_set_bit(PG_dcache_clean, &page->flags)) {
-			__flush_dcache_page(mapping, page);
-			if (mapping)
-				__flush_icache_all();
-                }
-		return;
-	}
-
 	if (!cache_ops_need_broadcast() &&
 	    mapping && !mapping_mapped(mapping))
 		clear_bit(PG_dcache_clean, &page->flags);
