@@ -552,18 +552,6 @@ config OMAP4_HSOTG_ED_CORRECTION
 	  order to improve Eye Diagramm. On 4430 CPUs this should
 	  improve Eye Diagram at least 8%.
 
-config STRONGLY_ORDERED
-       bool "Enable bus posting for PIO accesses"
-       depends on ARCH_OMAP34XX || ARCH_OMAP4
-       default y
-       ---help---
-       This option sets PIO access for internal OMAP3 registers to follow the
-       ARMv7 DEVICE attribute. For 3430 this will allow posted writes in the
-       interconnect. Software will need to synchronize writes to ensure
-       completion. When not set the attribute is Strongly Ordered which is
-       non-posted on the OMAP3 interconnect.
-
-
 endmenu
 
 endif
