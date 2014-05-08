@@ -16,9 +16,7 @@
 /*
  * use the following define for 90 degree rotation
 */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
 #define CY_90_DEG_ROTATION
-#endif
 
 #if defined (CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_TATE)
 #define CY_MAXX 800
@@ -50,11 +48,7 @@ static uint8_t cyttsp4_param_regs[] = {
 	0x30, 0x02, /* 07	SCREEN_SIZE_Y */
 	0x00, 0x05, /* 08	CENTROID_THRESHOLD */
 	0x00, 0x11, /* 09	THRESHOLD_NOISE */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
 	0x00, 0x46, /* 0A	THRESHOLD_NEG_NOISE */
-#else
-	0xFF, 0x00, /* 0A  THRESHOLD_NEG_NOISE */
-#endif
 	0x00,  		/* 0B	RESERVED03 */
 	0x00, 0x00, /* 0C	RESERVED04 */
 	0x00, 0x12, /* 0D	THRESHOLD_FINGER */
@@ -90,11 +84,7 @@ static uint8_t cyttsp4_param_regs[] = {
 	0x00, 0x1E, /* 2B	FreqHoppingRefreshCounterThreshold */
 	0x0E, 		/* 2C	Dynamic Finger Threshold Coefficient */
 	0x64,  		/* 2D	Maximum Dynamic Finger Threshold */
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
 	0x00, 0x14, /* 2E	BaselineUpdateRate */
-#else
-	0x02, 0x58, /* 2E       BaselineUpdateRate */
-#endif
 	0x01,  		/* 2F	AdvancedFingerSeparation */
 	0x0A,		/* 30	InnerEdgeGain */
 	0x03,  		/* 31	OuterEdgeGain */

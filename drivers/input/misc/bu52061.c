@@ -304,11 +304,7 @@ static int __devinit bu52061_probe(struct platform_device *pdev)
 
   gHallEventInfo.hall_current_status = gpio_get_value(HALL_EFFECT);
   gHallEventInfo.bl_status = BL_ON;
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-  gHallEventInfo.ignore_hall_event = true;
-#else
   gHallEventInfo.ignore_hall_event = false;
-#endif
 
   INIT_WORK(&g_bu52061_data->irq_work, bu52061_irq_work);
 

@@ -41,11 +41,7 @@
 #include "panel-nt71391.h"
 
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-static unsigned char first_suspend = 0;
-#else
 static unsigned char first_suspend = 1;
-#endif
 
 #define GPIO_BACKLIGHT_EN_O2M         25  /* Backlight GPIO */
 DECLARE_WAIT_QUEUE_HEAD(panel_fini_queue);

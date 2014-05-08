@@ -150,53 +150,6 @@ again:
 	return status;
 }
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-enum self_r {
-	SELF_UNDO = 0,
-	SELF_PASS = 1,
-	SELF_WRITE_FAIL = -1,
-	SELF_READ_FAIL = -2
-};
-static int selftest_result = SELF_UNDO;
-static int ftm_self_test_bits(struct usb_hcd *hcd)
-{
-	struct device *dev = hcd->self.controller;
-	int i = 0;
-	int error = 0;
-	u8 data = 0, value = 0;
-
-	for (i = 0; i < 8; i++) {
-		data = (1 << i);
-		if ((error = omap_ehci_ulpi_write(hcd, data, ULPI_SCRATCH, 20))) {
-			error = SELF_WRITE_FAIL;
-			goto done;
-		} else if ((value = omap_ehci_ulpi_read(hcd, ULPI_SCRATCH)) != data) {
-			error = SELF_READ_FAIL;
-			goto done;
-		}
-		dev_dbg(dev, "test value = 0x%02X\n", value);
-	}
-	error = SELF_PASS;
-
-done:
-	dev_dbg(dev, "result = %d\n", error);
-	return error;
-}
-
-static ssize_t ftm_usbphy_selftest_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	//struct usb_hcd *hcd = bus_to_hcd(container_of(dev, struct usb_bus, controller));
-	ssize_t len = 0;
-
-	//selftest_result = ftm_self_test_bits(hcd);
-	len += sprintf(buf + len, "%d\n", selftest_result);
-	return len;
-}
-static DEVICE_ATTR(selftest, S_IRUGO | S_IWUSR | S_IWGRP,
-			ftm_usbphy_selftest_show, NULL);
-#endif
-
 void omap_ehci_hw_phy_reset(const struct usb_hcd *hcd, int val)
 {
 	struct device *dev = hcd->self.controller;
@@ -748,15 +701,6 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 		omap_ehci->usb_phy_smsc_pid = omap_ehci_ulpi_read(hcd, 0x02) |
 			(omap_ehci_ulpi_read(hcd, 0x03) << 8);
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	selftest_result = ftm_self_test_bits(hcd);
-
-	ret = sysfs_create_file(&dev->kobj, &dev_attr_selftest.attr);
-	if (ret) {
-		dev_err(dev, "failed to create sysfs for selftest err:%d\n", ret);
-	}
-#endif
-
 	return 0;
 
 err_add_hcd:
@@ -780,9 +724,6 @@ static int ehci_hcd_omap_remove(struct platform_device *pdev)
 	struct device *dev	= &pdev->dev;
 	struct usb_hcd *hcd	= dev_get_drvdata(dev);
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	sysfs_remove_file(&dev->kobj, &dev_attr_selftest.attr);
-#endif
 	usb_remove_hcd(hcd);
 	pm_runtime_put_sync(dev->parent);
 	usb_put_hcd(hcd);

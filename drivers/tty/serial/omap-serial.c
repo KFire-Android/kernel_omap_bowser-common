@@ -1866,10 +1866,8 @@ static int omap_serial_runtime_resume(struct device *dev)
 static const struct dev_pm_ops omap_serial_dev_pm_ops = {
 	.suspend = serial_omap_suspend,
 	.resume	= serial_omap_resume,
-#ifndef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
 	.runtime_suspend = omap_serial_runtime_suspend,
 	.runtime_resume = omap_serial_runtime_resume,
-#endif
 };
 
 static struct platform_driver serial_omap_driver = {

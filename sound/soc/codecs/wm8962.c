@@ -2145,10 +2145,6 @@ SOC_SINGLE_TLV("HPMIXR MIXINR Volume", WM8962_HEADPHONE_MIXER_4,
 
 SOC_SINGLE_TLV("Speaker Boost Volume", WM8962_CLASS_D_CONTROL_2, 0, 7, 0,
 	       classd_tlv),
-
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-SOC_SINGLE("ADC Monomix Switch", WM8962_THREED1, 6, 1, 0),
-#endif
 };
 
 static const struct snd_kcontrol_new wm8962_spk_mono_controls[] = {
@@ -4007,36 +4003,6 @@ static void wm8962_free_gpio(struct snd_soc_codec *codec)
 }
 #endif
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-static ssize_t wm8962_headset_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct wm8962_priv *wm8962 = dev_get_drvdata(dev);
-	struct snd_soc_codec *codec = wm8962->codec;
-	int status = 0;
-	int reg;
-
-	#define WM8962_HEADSET_STATUS		0x01
-	#define WM8962_HOOKKEY_STATUS		0x10
-
-	reg = snd_soc_read(codec, WM8962_ADDITIONAL_CONTROL_4);
-
-	if (reg & WM8962_MICDET_STS) {
-		status |= WM8962_HEADSET_STATUS;
-	}
-
-	if (reg & WM8962_MICSHORT_STS) {
-		status |= WM8962_HOOKKEY_STATUS;
-	}
-
-	dev_dbg(codec->dev, "wm8962_headset_show(): ststus=0x%X\n", status);
-
-	return sprintf(buf, "%d\n", status);
-}
-
-static DEVICE_ATTR(headset, 0644, wm8962_headset_show, NULL);
-#endif
-
 static int wm8962_probe(struct snd_soc_codec *codec)
 {
 	int ret;
@@ -4236,12 +4202,6 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 	wm8962_init_beep(codec);
 	wm8962_init_gpio(codec);
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	ret = device_create_file(codec->dev, &dev_attr_headset);
-	if (ret != 0)
-		dev_err(codec->dev, "Failed to register headset\n");
-#endif
-
 	if (i2c->irq) {
 		if (pdata && pdata->irq_active_low) {
 			trigger = IRQF_TRIGGER_LOW;
@@ -4341,10 +4301,6 @@ static int wm8962_remove(struct snd_soc_codec *codec)
 	struct i2c_client *i2c = container_of(codec->dev, struct i2c_client,
 					      dev);
 	int i;
-
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	device_remove_file(codec->dev, &dev_attr_headset);
-#endif
 
 	if (i2c->irq)
 		free_irq(i2c->irq, codec);

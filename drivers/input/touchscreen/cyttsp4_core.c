@@ -594,12 +594,6 @@ static int _cyttsp4_calc_data_crc(struct cyttsp4 *ts,
 int write_charger_hdmi_config(struct cyttsp4 *ts, u8 value);
 
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-unsigned char ftm_test_signal_data[1000] = {0};
-int ftm_test_total_points;
-#endif
-
-
 static void _cyttsp4_pr_state(struct cyttsp4 *ts)
 {
 
@@ -5704,176 +5698,6 @@ static DEVICE_ATTR(ic_reflash, S_IRUSR | S_IWUSR,
 	cyttsp4_ic_reflash_show, cyttsp4_ic_reflash_store);
 #endif /* CY_USE_FORCE_LOAD || CONFIG_TOUCHSCREEN_DEBUG */
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-static int _cyttsp4_signal_test(struct cyttsp4 *ts)
-{
-	struct cyttsp4_catdata cat_data;
-	int i, j, retval;
-	u8 cmd, cmd2[5];
-	u8 status[2];
-	int row, column, count = 0;
-	int retry = 1;
-
-	memset(&cat_data, 0x0, sizeof(cat_data));
-
-	// Get Row, Column parameter
-	row = ts->platform_data->sett[CY_IC_GRPNUM_TCH_PARM_VAL]->data[2];
-	column = ts->platform_data->sett[CY_IC_GRPNUM_TCH_PARM_VAL]->data[3];
-	ftm_test_total_points = row * column;
-	printk("Row: 0x%2X , Column: 0x%2X\n", row, column);
-
-	// w 67 02 0B
-	cmd = 0x0B;
-	retval = _cyttsp4_write_block_data(ts, CY_REG_BASE + offsetof(struct cyttsp4_catdata, cmd),
-		sizeof(cmd), &cmd, ts->platform_data->addr[CY_TCH_ADDR_OFS], true);
-	if(retval < 0){
-		printk("%s: Fail write command 0x%X ret= %d\n", __func__, cmd, retval);
-		return -1;
-	}
-
-	// delay 50 ms
-	for(i = 0 ; i < 50; i++)
-		udelay(1000);
-
-	// r 67 x x
-	retval = _cyttsp4_read_block_data(ts, CY_REG_BASE + offsetof(struct cyttsp4_catdata, cmd),
-		sizeof(status), status, ts->platform_data->addr[CY_TCH_ADDR_OFS], true);
-	printk("%s: status[0]:0x%X status[1]: 0x%X\n", __func__, status[0], status[1]);
-	if(retval < 0){
-		printk("%s: Fail read command 0x%X ret= %d\n", __func__, cmd, retval);
-		return -1;
-	}
-
-	// w 67 03 00 00 3C C3 02
-	for(i = 0 ; i < ftm_test_total_points/247 + 1; ) {
-		cmd2[0] = 0x0 + (i * 247) / 256;
-		cmd2[1] = 0x0 + (i * 247) % 256;
-		cmd2[2] = 0x03;
-		cmd2[3] = 0x3C;
-		cmd2[4] = 0x2;
-		printk("cmd2[0]: 0x%2X , cmd2[1]: 0x%2X, cmd2[2]: 0x%2X , cmd2[3]: 0x%2X\n", cmd2[0], cmd2[1], cmd2[2], cmd2[3]);
-		_cyttsp4_write_block_data(ts, CY_REG_BASE + offsetof(struct cyttsp4_catdata, data),
-			sizeof(cmd2), cmd2, ts->platform_data->addr[CY_TCH_ADDR_OFS], true);
-
-		_cyttsp4_read_block_data(ts, CY_REG_BASE + offsetof(struct cyttsp4_catdata, cmd),
-			CY_NUM_CAT_DATA + 1, &cat_data.cmd, ts->platform_data->addr[CY_TCH_ADDR_OFS], true);
-
-		// w 67 02 0C
-		cmd = 0x0C;
-		_cyttsp4_write_block_data(ts, CY_REG_BASE + offsetof(struct cyttsp4_catdata, cmd),
-			sizeof(cmd), &cmd, ts->platform_data->addr[CY_TCH_ADDR_OFS], true);
-
-		// Use count to prevent infinite loop
-		count = 0;
-		do {
-			// delay 10 ms
-			/* According to spec, only delay 10ms, actully we need 200 to 300 ms */
-			for(j = 0 ; j < 10; j++)
-				udelay(1000);
-
-			// r 67 x*252
-			memset(&cat_data, 0xFF, sizeof(cat_data));
-			_cyttsp4_read_block_data(ts, CY_REG_BASE + offsetof(struct cyttsp4_catdata, cmd),
-				CY_NUM_CAT_DATA + 1, &cat_data.cmd, ts->platform_data->addr[CY_TCH_ADDR_OFS], true);
-			count++;
-			if(count > 100) {
-				printk("[%s] cannot get correct size of signal test\n", __func__);
-				return -1;
-			}
-		} while((cat_data.data[2] << 8) + cat_data.data[3] == ftm_test_total_points);
-
-		if(retry > 0)
-		{
-			retry = 0;
-			i = 0;
-			continue;
-		}
-
-		for(j = 0 ; (j < 247) && ((j + i *247) < ftm_test_total_points) ; j++) {
-			ftm_test_signal_data[j + i*247] = cat_data.data[5+j];
-		}
-		i++;
-	}
-	return 0;
-}
-
-static ssize_t cyttsp4_ftm_test_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	int i;
-	char temp[10];
-	sprintf(buf, "data=%d,", ftm_test_total_points);
-
-	for(i = 0 ; i < ftm_test_total_points ; i++)
-	{
-		memset(temp, '\0', sizeof(temp));
-		if(i < ftm_test_total_points-1)
-			sprintf(temp, "%d,", ftm_test_signal_data[i]);
-		else
-			sprintf(temp, "%d", ftm_test_signal_data[i]);
-		strcat(buf, temp);
-	}
-
-	return strlen(buf)+1;
-}
-
-static ssize_t cyttsp4_ftm_test_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct cyttsp4 *ts = dev_get_drvdata(dev);
-	char messages[256] = {'\0'};
-	int retval;
-	unsigned long irq_flags = 0;
-
-	strncpy(messages, buf, size);
-
-	if(strncmp(messages, "stop_irq", 8) == 0) {
-		printk(KERN_INFO "[%s] to free irq\n", __func__);
-		free_irq(ts->irq, ts);
-	}
-	if(strncmp(messages, "start_irq", 9) == 0) {
-#ifdef CY_USE_LEVEL_IRQ
-		irq_flags = IRQF_TRIGGER_LOW | IRQF_ONESHOT;
-#else
-		irq_flags = IRQF_TRIGGER_FALLING | IRQF_ONESHOT;
-#endif
-		retval = request_threaded_irq(ts->irq, NULL, cyttsp4_irq, irq_flags, ts->input->name, ts);
-		if(retval < 0) {
-			printk(KERN_INFO "[%s] fail to request irq\n", __func__);
-		}
-	} else if(strncmp(messages, "reset", 5) == 0) {
-		printk(KERN_INFO "[%s] to reset touch\n", __func__);
-		retval = _cyttsp4_reset(ts);
-		if(retval < 0) {
-			printk(KERN_INFO "[%s] fail to reset touch\n", __func__);
-		}
-	} else if(strncmp(messages, "exit_bootloader", 15) == 0) {
-		printk(KERN_INFO "[%s] touch exit bootloader\n", __func__);
-		retval = _cyttsp4_ldr_exit(ts);
-		if(retval < 0) {
-			printk(KERN_INFO "[%s] fail to exit bootloader\n", __func__);
-		}
-	} else if(strncmp(messages, "operating", 9) == 0) {
-		printk(KERN_INFO "[%s] enter operating mode\n", __func__);
-		mutex_lock(&(ts->data_lock));
-		retval = _cyttsp4_set_mode(ts, CY_OPERATE_MODE);
-		mutex_unlock(&(ts->data_lock));
-	} else if(strncmp(messages, "testmode", 8) == 0) {
-		printk(KERN_INFO "[%s] enter test mode\n", __func__);
-		mutex_lock(&(ts->data_lock));
-		retval = _cyttsp4_set_mode(ts, CY_CONFIG_MODE);
-		mutex_unlock(&(ts->data_lock));
-	} else if(strncmp(messages, "signal_test", 11) == 0) {
-		printk(KERN_INFO "[%s] enter signal test\n", __func__);
-		retval = _cyttsp4_signal_test(ts);
-	}
-
-	return size;
-}
-static DEVICE_ATTR(ftm_test, S_IRUSR | S_IWUSR,
-	cyttsp4_ftm_test_show, cyttsp4_ftm_test_store);
-#endif
-
 #ifdef CY_USE_TMA884
 static int _cyttsp4_calc_data_crc(struct cyttsp4 *ts, size_t ndata, u8 *pdata,
 	u8 *crc_h, u8 *crc_l, const char *name)
@@ -6101,10 +5925,6 @@ static void _cyttsp4_file_init(struct cyttsp4 *ts)
 		dev_err(ts->dev,
 			"%s: Cannot create drv_rw_reg_data\n", __func__);
 #endif
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	if (device_create_file(ts->dev, &dev_attr_ftm_test))
-		pr_err("%s: Cannot create ftm_test\n", __func__);
-#endif
 #ifdef CONFIG_TOUCHSCREEN_DEBUG_ENABLE_ENTRY
 	if (device_create_file(ts->dev, &dev_attr_ts_debug))
 		dev_err(ts->dev,
@@ -6137,9 +5957,6 @@ static void _cyttsp4_file_free(struct input_dev *dev)
 #ifdef CY_USE_REG_ACCESS
 	device_remove_file(dev, &dev_attr_drv_rw_regid);
 	device_remove_file(dev, &dev_attr_drv_rw_reg_data);
-#endif
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	device_remove_file(dev, &dev_attr_ftm_test);
 #endif
 #ifdef CONFIG_TOUCHSCREEN_DEBUG_ENABLE_ENTRY
 	device_remove_file(dev, &dev_attr_ts_debug);
@@ -6903,9 +6720,6 @@ void *cyttsp4_core_init(struct cyttsp4_bus_ops *bus_ops,
 		"%s: Initialize event signals\n", __func__);
 	__set_bit(EV_ABS, input_device->evbit);
 	__set_bit(EV_REL, input_device->evbit);
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	__set_bit(EV_KEY, input_device->evbit);
-#endif
 	//bitmap_fill(input_device->keybit, KEY_MAX);
 	bitmap_fill(input_device->relbit, REL_MAX);
 	bitmap_fill(input_device->absbit, ABS_MAX);

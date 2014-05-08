@@ -216,21 +216,7 @@ static int bowser_wm8962_hw_params(struct snd_pcm_substream *substream,
 
 	dev_dbg(codec_dai->dev, "%s() - enter\n", __func__);
 
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	sys_clk = fll_clk = params_rate(params) * 512;
-	if (fll_clk < 6000000)
-		fll_clk *= 2;
-
-	ret = snd_soc_dai_set_sysclk(codec_dai, WM8962_SYSCLK_MCLK,
-				     WM8962_MCLK_RATE, SND_SOC_CLOCK_IN);
-	if (ret < 0) {
-		dev_err(codec_dai->dev, "Failed to set CODEC SYSCLK: %d\n",
-			ret);
-		return ret;
-	}
-#else
 	sys_clk = fll_clk =  WM8962_SYS_CLK_RATE;
-#endif
 	ret = snd_soc_dai_set_pll(codec_dai, WM8962_FLL, WM8962_FLL_MCLK,
 				  WM8962_MCLK_RATE, fll_clk);
 	if (ret < 0) {

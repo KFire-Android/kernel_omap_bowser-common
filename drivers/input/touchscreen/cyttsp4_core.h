@@ -81,12 +81,6 @@
  */
 #define CY_ANY_DIFF_NEW_VER
 
-/* use the following define to include loader application
- */
-#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-#define CY_USE_FORCE_LOAD
-#endif
-
 /*
  * use the following define to enable register peak/poke capability
  */

@@ -2424,10 +2424,6 @@ static int check_modinfo(struct module *mod, struct load_info *info)
 	const char *modmagic = get_modinfo(info, "vermagic");
 	int err;
 
-	#ifdef CONFIG_MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-	return 0;
-	#endif
-
 	/* This is allowed: modprobe --force will invalidate it. */
 	if (!modmagic) {
 		err = try_to_force_load(mod, "bad vermagic");

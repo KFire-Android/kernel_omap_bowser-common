@@ -399,10 +399,6 @@ config MACH_OMAP4_BOWSER_SUBTYPE_JEM
         select MACH_OMAP4_BOWSER
         depends on ARCH_OMAP4
 
-config MACH_OMAP4_BOWSER_SUBTYPE_JEM_FTM
-        bool "FTM mode for OMAP4 Bowser based Jem sub-type board"
-        depends on MACH_OMAP4_BOWSER_SUBTYPE_JEM
-
 config USE_AMAZON_DUCATI
         bool "Ducati settings which are compatible with the stock binary from Amazon"
         depends on MACH_OMAP4_BOWSER
