@@ -149,7 +149,6 @@ void snd_ctl_notify(struct snd_card *card, unsigned int mask,
 	
 	if (snd_BUG_ON(!card || !id))
 		return;
-
 	read_lock(&card->ctl_files_rwlock);
 #if defined(CONFIG_SND_MIXER_OSS) || defined(CONFIG_SND_MIXER_OSS_MODULE)
 	card->mixer_oss_change_count++;
@@ -573,7 +572,6 @@ int snd_ctl_activate_id(struct snd_card *card, struct snd_ctl_elem_id *id,
 	up_write(&card->controls_rwsem);
 	if (ret > 0)
 		snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_INFO, id);
-
 	return ret;
 }
 EXPORT_SYMBOL_GPL(snd_ctl_activate_id);
@@ -836,7 +834,6 @@ static int snd_ctl_elem_read(struct snd_card *card,
 	if (kctl == NULL) {
 		result = -ENOENT;
 	} else {
-
 		index_offset = snd_ctl_get_ioff(kctl, &control->id);
 		vd = &kctl->vd[index_offset];
 		if ((vd->access & SNDRV_CTL_ELEM_ACCESS_READ) &&
@@ -847,7 +844,6 @@ static int snd_ctl_elem_read(struct snd_card *card,
 			result = -EPERM;
 	}
 	up_read(&card->controls_rwsem);
-
 	return result;
 }
 
@@ -900,20 +896,10 @@ static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
 			up_read(&card->controls_rwsem);
 			snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_VALUE,
 				       &control->id);
-
-			snd_printd(KERN_ERR "WRITE [ %s | %s | value.integer = %ld, value.integer64 = %lld, value.enumerated = %d, value.bytes = %s]\n",
-				card->id, kctl->id.name,
-				control->value.integer.value[0], control->value.integer64.value[0], control->value.enumerated.item[0], control->value.bytes.data);
-
 			return 0;
 		}
 	}
 	up_read(&card->controls_rwsem);
-
-	snd_printd(KERN_ERR "WRITE [ %s | %s | value.integer = %ld, value.integer64 = %lld, value.enumerated = %d, value.bytes = %s] == %d\n",
-		card->id, kctl->id.name,
-		control->value.integer.value[0], control->value.integer64.value[0], control->value.enumerated.item[0], control->value.bytes.data,
-		result);
 	return result;
 }
 
@@ -1022,7 +1008,6 @@ static int snd_ctl_elem_user_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct user_element *ue = kcontrol->private_data;
-
 
 	memcpy(&ucontrol->value, ue->elem_data, ue->elem_data_size);
 	return 0;
