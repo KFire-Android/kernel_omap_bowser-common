@@ -49,10 +49,10 @@ tf_driver-objs += tf_self_test_device.o
 tf_driver-objs += tf_self_test_post.o
 endif
 
+plus_sec := $(call as-instr,.arch_extension sec,+sec)
+AFLAGS_bridge_pub2sec.o	:=-Wa,-march=armv7-a$(plus_sec)
+
 obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += tf_driver.o
 obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += rproc_drm.o
 
 obj-$(CONFIG_TF_CRYPTO_RNG) += tf_crypto_rng.o
-
-plus_sec := $(call as-instr,.arch_extension sec,+sec)
-AFLAGS_bridge_pub2sec.o :=-Wa,-march=armv7-a$(plus_sec)
