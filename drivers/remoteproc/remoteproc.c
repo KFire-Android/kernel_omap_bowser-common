@@ -828,7 +828,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 	while (len >= sizeof(*rsc) && !ret) {
 		da = rsc->da;
 		pa = rsc->pa;
-		dev_info(dev, "resource: type %d, da 0x%llx, pa 0x%llx, "
+		dev_dbg(dev, "resource: type %d, da 0x%llx, pa 0x%llx, "
 			"mapped pa: 0x%x, len 0x%x, reserved 0x%x, "
 			"name %s\n", rsc->type, rsc->da, rsc->pa, pa,
 			rsc->len, rsc->reserved, rsc->name);
@@ -1143,7 +1143,7 @@ static void rproc_loader_cont(const struct firmware *fw, void *context)
 		goto out;
 	}
 
-	dev_info(dev, "BIOS image version is %d\n", image->version);
+	dev_dbg(dev, "BIOS image version is %d\n", image->version);
 
 	rproc->header = kzalloc(image->header_len, GFP_KERNEL);
 	if (!rproc->header) {
