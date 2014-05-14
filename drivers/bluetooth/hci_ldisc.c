@@ -47,10 +47,6 @@
 #include "hci_uart.h"
 
 #define VERSION "2.2"
-// #undef BT_DBG
-// #define BT_DBG printk
-
-#define BT_DBG0 printk
 
 static int reset = 0;
 
@@ -133,7 +129,7 @@ int hci_uart_tx_wakeup(struct hci_uart *hu)
 		return 0;
 	}
 
-	BT_DBG("\n");
+	BT_DBG("");
 
 restart:
 	clear_bit(HCI_UART_TX_WAKEUP, &hu->tx_state);
@@ -166,7 +162,7 @@ restart:
 /* Initialize device */
 static int hci_uart_open(struct hci_dev *hdev)
 {
-	BT_DBG0("%s %p\n", hdev->name, hdev);
+	BT_DBG("%s %p", hdev->name, hdev);
 
 	/* Nothing to do for UART driver */
 
@@ -181,7 +177,7 @@ static int hci_uart_flush(struct hci_dev *hdev)
 	struct hci_uart *hu  = (struct hci_uart *) hdev->driver_data;
 	struct tty_struct *tty = hu->tty;
 
-	BT_DBG0("hdev %p tty %p\n", hdev, tty);
+	BT_DBG("hdev %p tty %p", hdev, tty);
 
 	if (hu->tx_skb) {
 		kfree_skb(hu->tx_skb); hu->tx_skb = NULL;
@@ -214,7 +210,6 @@ static int hci_uart_close(struct hci_dev *hdev)
 static int hci_uart_send_frame(struct sk_buff *skb)
 {
 	struct hci_dev* hdev = (struct hci_dev *) skb->dev;
-	struct tty_struct *tty;
 	struct hci_uart *hu;
 
 	if (!hdev) {
@@ -226,9 +221,8 @@ static int hci_uart_send_frame(struct sk_buff *skb)
 		return -EBUSY;
 
 	hu = (struct hci_uart *) hdev->driver_data;
-	tty = hu->tty;
 
-	BT_DBG("%s: type %d len %d\n", hdev->name, bt_cb(skb)->pkt_type, skb->len);
+	BT_DBG("%s: type %d len %d", hdev->name, bt_cb(skb)->pkt_type, skb->len);
 
 	hu->proto->enqueue(hu, skb);
 
@@ -259,7 +253,7 @@ static int hci_uart_tty_open(struct tty_struct *tty)
 {
 	struct hci_uart *hu = (void *) tty->disc_data;
 
-	BT_DBG("tty %p\n", tty);
+	BT_DBG("tty %p", tty);
 
 	/* FIXME: This btw is bogus, nothing requires the old ldisc to clear
 	   the pointer */
@@ -303,7 +297,7 @@ static void hci_uart_tty_close(struct tty_struct *tty)
 {
 	struct hci_uart *hu = (void *)tty->disc_data;
 
-	BT_DBG("tty %p\n", tty);
+	BT_DBG("tty %p", tty);
 
 	/* Detach from the tty */
 	tty->disc_data = NULL;
@@ -337,7 +331,7 @@ static void hci_uart_tty_wakeup(struct tty_struct *tty)
 {
 	struct hci_uart *hu = (void *)tty->disc_data;
 
-	BT_DBG("\n");
+	BT_DBG("");
 
 	if (!hu)
 		return;
@@ -385,7 +379,7 @@ static int hci_uart_register_dev(struct hci_uart *hu)
 {
 	struct hci_dev *hdev;
 
-	BT_DBG("\n");
+	BT_DBG("");
 
 	/* Initialize and register HCI device */
 	hdev = hci_alloc_dev();
@@ -466,7 +460,7 @@ static int hci_uart_tty_ioctl(struct tty_struct *tty, struct file * file,
 	struct hci_uart *hu = (void *)tty->disc_data;
 	int err = 0;
 
-	BT_DBG("\n");
+	BT_DBG("");
 
 	/* Verify the status of the device */
 	if (!hu)
