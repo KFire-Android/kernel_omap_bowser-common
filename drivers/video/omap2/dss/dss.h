@@ -607,9 +607,6 @@ void hdmi_dump_regs(struct seq_file *s);
 int omapdss_hdmi_register_hdcp_callbacks(void (*hdmi_start_frame_cb)(void),
 					 void (*hdmi_irq_cb)(int status),
 					 bool (*hdmi_power_on_cb)(void));
-#ifdef CONFIG_HDMI_CERT_DEBUG
-extern struct device_attribute dev_attr_hdmi_timings;
-#endif
 
 int omap_dss_ovl_set_info(struct omap_overlay *ovl,
 		struct omap_overlay_info *info);

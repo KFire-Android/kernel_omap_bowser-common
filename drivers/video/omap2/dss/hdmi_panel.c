@@ -174,9 +174,6 @@ static struct attribute *hdmi_panel_attrs[] = {
 	&dev_attr_s3d_type.attr,
 	&dev_attr_edid.attr,
 	&dev_attr_deepcolor.attr,
-#ifdef CONFIG_HDMI_CERT_DEBUG
-	&dev_attr_hdmi_timings,
-#endif
 	&dev_attr_audio_channels.attr,
 	NULL,
 };
