@@ -28,7 +28,7 @@
 #define HDMI_HPD_HIGH		0x20
 #define HDMI_BCAP		0x40
 #define HDMI_RI_ERR		0x80
-#define HDMI_SYNC_LOST		0x100
+#define HDMI_SYNC_LOST		0x200
 enum hdmi_pll_pwr {
 	HDMI_PLLPWRCMD_ALLOFF = 0,
 	HDMI_PLLPWRCMD_PLLONLY = 1,

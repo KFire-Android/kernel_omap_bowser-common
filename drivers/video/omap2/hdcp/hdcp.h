@@ -27,38 +27,16 @@
 /* Structures related to ioctl  */
 /********************************/
 
-/* HDCP output key size in 32-bit words: 640 bytes */
-#define DESHDCP_KEY_SIZE 160 // 640 bytes
-
-/* HDCP input key size in 32-bit words : 656 bytes */
-#define DESHDCP_KEY_SIZE_IN 164
-
-/* PEK key size in 32-bit words: 32 bytes */
-#define PEK_KEY_SIZE	8
+/* HDCP key size in 32-bit words */
+#define DESHDCP_KEY_SIZE 160
 
 /* HDCP ioctl */
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
-enum {
-	HDCP_MAGIC_KEY_CEK,
-	HDCP_MAGIC_KEY_PEK_256_CEK,
-	HDCP_MAGIC_KEY_PEK_128_CEK,
-	HDCP_MAGIC_KEY_PEK_256_KEK,
-	HDCP_MAGIC_KEY_PEK_128_KEK
-};
-
 struct hdcp_encrypt_control {
-	uint32_t in_key[DESHDCP_KEY_SIZE_IN];
+	uint32_t in_key[DESHDCP_KEY_SIZE];
 	uint32_t *out_key;
-	uint32_t magic_key; /* 3. 0/1/2/3/4: CEK/PEK_256(CEK)/PEK_128(CEK)/PEK_256(KEK)/PEK_128(KEK) for KEY in (1) */
-	uint32_t key_wrap[PEK_KEY_SIZE]; /* 4. PEK wrap key input: PEK(CEK)=AES_encrypt(PEK, CEK) if magic_key=1/2 PEK(KEK)=AES_encrypt(PEK, KEK) if magic_key=3/4*/
-};
-
-struct pek_encrypt_control {
-	uint32_t in_key[PEK_KEY_SIZE];     /* 1. pek key input:  PEK(CEK)=AES_encrypt(PEK, CEK) */
-	uint32_t *out_key;   /* 2. pek key output: PEK(KEK)=AES_encrypt(PEK, KEK) */
-	uint32_t magic_key;
 };
 
 struct hdcp_enable_control {
@@ -82,17 +60,15 @@ struct hdcp_wait_control {
 
 /* HDCP ioctl */
 #define HDCP_IOCTL_MAGIC 'h'
-#define HDCP_ENABLE	  	_IOW(HDCP_IOCTL_MAGIC, 0, \
-					struct hdcp_enable_control)
-#define HDCP_DISABLE	  	_IO(HDCP_IOCTL_MAGIC, 1)
-#define HDCP_ENCRYPT_KEY 	_IOWR(HDCP_IOCTL_MAGIC, 2, \
-					struct hdcp_encrypt_control)
-#define HDCP_QUERY_STATUS 	_IOWR(HDCP_IOCTL_MAGIC, 3, uint32_t)
-#define HDCP_WAIT_EVENT 	_IOWR(HDCP_IOCTL_MAGIC, 4, \
-					struct hdcp_wait_control)
-#define HDCP_DONE		_IOW(HDCP_IOCTL_MAGIC, 5, uint32_t)
-#define HDCP_PEK_ENCRYPT_KEY  	_IOWR(HDCP_IOCTL_MAGIC, 6, \
-					struct pek_encrypt_control)
+#define HDCP_ENABLE	  _IOW(HDCP_IOCTL_MAGIC, 0, \
+				struct hdcp_enable_control)
+#define HDCP_DISABLE	  _IO(HDCP_IOCTL_MAGIC, 1)
+#define HDCP_ENCRYPT_KEY  _IOWR(HDCP_IOCTL_MAGIC, 2, \
+				struct hdcp_encrypt_control)
+#define HDCP_QUERY_STATUS _IOWR(HDCP_IOCTL_MAGIC, 3, uint32_t)
+#define HDCP_WAIT_EVENT _IOWR(HDCP_IOCTL_MAGIC, 4, \
+				struct hdcp_wait_control)
+#define HDCP_DONE	_IOW(HDCP_IOCTL_MAGIC, 5, uint32_t)
 
 /* HDCP state */
 #define HDCP_STATE_DISABLED		0
@@ -125,6 +101,12 @@ struct hdcp_wait_control {
 #define _9032_AUTO_RI_	/* Auto Ri mode */
 #define _9032_BCAP_	/* BCAP polling */
 #undef _9032_AN_STOP_FIX_
+
+#ifdef DEBUG
+#define DDC_DBG			/* Log DDC data */
+#undef POWER_TRANSITION_DBG	/* Add wait loops to allow testing DSS power
+				 * transition during HDCP */
+#endif
 
 /***************************/
 /* HW specific definitions */
@@ -210,6 +192,32 @@ enum av_mute {
 	AV_MUTE_SET = 0x01,
 	AV_MUTE_CLEAR = 0x10
 };
+/***********************/
+/* HDCP DDC addresses  */
+/***********************/
+
+#define DDC_BKSV_ADDR		0x00
+#define DDC_Ri_ADDR		0x08
+#define DDC_AKSV_ADDR		0x10
+#define DDC_AN_ADDR		0x18
+#define DDC_V_ADDR		0x20
+#define DDC_BCAPS_ADDR		0x40
+#define DDC_BSTATUS_ADDR	0x41
+#define DDC_KSV_FIFO_ADDR	0x43
+
+#define DDC_BKSV_LEN		5
+#define DDC_Ri_LEN		2
+#define DDC_AKSV_LEN		5
+#define DDC_AN_LEN		8
+#define DDC_V_LEN		20
+#define DDC_BCAPS_LEN		1
+#define DDC_BSTATUS_LEN		2
+
+#define DDC_BIT_REPEATER	6
+
+#define DDC_BSTATUS0_MAX_DEVS	0x80
+#define DDC_BSTATUS0_DEV_COUNT	0x7F
+#define DDC_BSTATUS1_MAX_CASC	0x08
 
 /***************************/
 /* Definitions             */
@@ -226,6 +234,7 @@ enum av_mute {
 #define HDCP_CANCELLED_AUTH	7
 
 #define HDCP_INFINITE_REAUTH	0x100
+#define HDCP_MAX_DDC_ERR	5
 
 /* FIXME: should be 300ms delay between HDMI start frame event and HDCP enable
  * (to respect 7 VSYNC delay in 24 Hz)
@@ -234,6 +243,10 @@ enum av_mute {
 #define HDCP_R0_DELAY		110
 #define HDCP_KSV_TIMEOUT_DELAY  5000
 #define HDCP_REAUTH_DELAY	100
+
+/* DDC access timeout in ms */
+#define HDCP_DDC_TIMEOUT	500
+#define HDCP_STOP_FRAME_BLOCKING_TIMEOUT (2*HDCP_DDC_TIMEOUT)
 
 /* Event source */
 #define HDCP_SRC_SHIFT		8
@@ -279,14 +292,12 @@ enum hdmi_states {
 struct hdcp_delayed_work {
 	struct delayed_work work;
 	int event;
-	bool cancel;
 };
 
 struct hdcp {
 	void __iomem *hdmi_wp_base_addr;
 	void __iomem *deshdcp_base_addr;
 	struct mutex lock;
-	struct mutex cancel_lock;
 	struct hdcp_enable_control *en_ctrl;
 	dev_t dev_id;
 	struct class *hdcp_class;
@@ -303,6 +314,7 @@ struct hdcp {
 	struct delayed_work *pending_wq_event;
 	int retry_cnt;
 	int dss_state;
+	int pending_disable;
 	int hdmi_restart;
 	int hpd_low;
 	spinlock_t spinlock;
@@ -371,6 +383,11 @@ void hdcp_lib_auto_bcaps_rdy_check(bool state);
 void hdcp_lib_set_av_mute(enum av_mute av_mute_state);
 void hdcp_lib_set_encryption(enum encryption_state enc_state);
 u8 hdcp_lib_check_repeater_bit_in_tx(void);
+
+/* DDC */
+int hdcp_ddc_read(u16 no_bytes, u8 addr, u8 *pdata);
+int hdcp_ddc_write(u16 no_bytes, u8 addr, u8 *pdata);
+void hdcp_ddc_abort(void);
 
 #endif /* __KERNEL__ */
 

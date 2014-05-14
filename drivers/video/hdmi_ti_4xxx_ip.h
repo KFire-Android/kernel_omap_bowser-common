@@ -268,11 +268,6 @@ enum hdmi_packing_mode {
 	HDMI_PACK_ALREADYPACKED = 7
 };
 
-enum hdmi_timing_mode {
-	HDMI_TIMING_MASTER_24BIT = 1,
-	HDMI_TIMING_MASTER_30BIT = 2,
-	HDMI_TIMING_MASTER_36BIT = 3
-};
 
 struct hdmi_core_video_config {
 	enum hdmi_core_inputbus_width	ip_bus_width;
@@ -345,7 +340,7 @@ struct hdmi_video_interface {
 	int	vsp;	/* Vsync polarity */
 	int	hsp;	/* Hsync polarity */
 	int	interlacing;
-	enum hdmi_timing_mode	tm;	/* Timing mode */
+	int	tm;	/* Timing mode */
 };
 
 int hdmi_lib_start_acr_wa(void);
