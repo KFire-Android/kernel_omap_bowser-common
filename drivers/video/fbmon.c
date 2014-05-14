@@ -994,34 +994,25 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	struct fb_videomode *m;
 	int num = 0, i;
 	u8 svd[64], edt[(128 - 4) / DETAILED_TIMING_DESCRIPTION_SIZE];
-	u8 svd_n = 0;
-	u8 pos = 4;	/* Start of data block collection */
+	u8 pos = 4, svd_n = 0;
 
-	if (!edid) {
-		printk(KERN_ERR"EDID: Invalid block\n");
+	if (!edid)
 		return;
-	}
 
-	if (!edid_checksum(edid)) {
-		printk(KERN_ERR"EDID: Wrong checksum\n");
+	if (!edid_checksum(edid))
 		return;
-	}
 
-	/* If no CEA extension header or invalid byte offset */
-	if (edid[0] != 0x2 || edid[2] < 4) {
-		printk(KERN_ERR"EDID: Wrong tag for CEA Block Extension\n");
+	if (edid[0] != 0x2 ||
+	    edid[2] < 4 || edid[2] > 128 - DETAILED_TIMING_DESCRIPTION_SIZE)
 		return;
-	}
 
 	DPRINTK("  Short Video Descriptors\n");
 
 	while (pos < edid[2]) {
-		/* Calculate Vendor Specific Data Block len */
 		u8 len = edid[pos] & 0x1f, type = (edid[pos] >> 5) & 7;
 		pr_debug("Data block %u of %u bytes\n", type, len);
 
 		pos++;
-		/* CEA Extension Header */
 		if (type == 2) {
 			for (i = pos; i < pos + len; i++) {
 				u8 idx = edid[i] & 0x7f;
@@ -1029,16 +1020,13 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 				pr_debug("N%sative mode #%d\n",
 					 edid[i] & 0x80 ? "" : "on-n", idx);
 			}
-
-		/* Start of VESA CEA Block Tag Extension (type = 3) */
 		} else if (type == 3 && len >= 3) {
 			u32 ieee_reg = edid[pos] | (edid[pos + 1] << 8) |
 				(edid[pos + 2] << 16);
-			/* Check for HDMI Identifier */
 			if (ieee_reg == 0x000c03)
 				specs->misc |= FB_MISC_HDMI;
 		}
-		/* Skip data bytes */
+
 		pos += len;
 	}
 
