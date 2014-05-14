@@ -265,16 +265,16 @@ transfer_done:
 
 static void dsscomp_gralloc_do_clone(struct work_struct *work)
 {
-//#ifdef CONFIG_DEBUG_FS
-//	u32 ms1, ms2;
-//#endif
+#ifdef CONFIG_DEBUG_FS
+	u32 ms1, ms2;
+#endif
 	struct dsscomp_clone_work *wk = container_of(work, typeof(*wk), work);
 	int skip;
 
 	BUG_ON(wk->comp->state != DSSCOMP_STATE_ACTIVE);
-//#ifdef CONFIG_DEBUG_FS
-//	ms1 = ktime_to_ms(ktime_get());
-//#endif
+#ifdef CONFIG_DEBUG_FS
+	ms1 = ktime_to_ms(ktime_get());
+#endif
 
 	mutex_lock(&mtx);
 	/* ignore deferred frames if we've since been blanked */
@@ -284,10 +284,10 @@ static void dsscomp_gralloc_do_clone(struct work_struct *work)
 	if (!skip)
 		dsscomp_gralloc_transfer_dmabuf(wk->dma_cfg);
 
-//#ifdef CONFIG_DEBUG_FS
-//	ms2 = ktime_to_ms(ktime_get());
-//	dev_info(DEV(cdev), "DMA latency(msec) = %lld\n", ms2-ms1);
-//#endif
+#ifdef CONFIG_DEBUG_FS
+	ms2 = ktime_to_ms(ktime_get());
+	dev_info(DEV(cdev), "DMA latency(msec) = %d\n", ms2-ms1);
+#endif
 	mutex_lock(&mtx);
 	/* ignore deferred frames if we've since been blanked */
 	skip |= blanked;
@@ -367,8 +367,16 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 
 	mutex_lock(&mtx);
 
-	/* create sync object with 1 temporary ref */
-	gsync = kzalloc(sizeof(*gsync), GFP_KERNEL);
+	/* allocate sync object with 1 temporary ref */
+	gsync = kmem_cache_zalloc(gsync_cachep, GFP_KERNEL);
+	if (!gsync) {
+		mutex_unlock(&mtx);
+		mutex_unlock(&local_mtx);
+		pr_err("DSSCOMP: %s: can't allocate object from cache\n",
+								__func__);
+		BUG();
+	}
+
 	gsync->cb_arg = cb_arg;
 	gsync->cb_fn = cb_fn;
 	gsync->refs.counter = 1;
