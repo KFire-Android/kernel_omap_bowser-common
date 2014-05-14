@@ -20,9 +20,6 @@
 #include <linux/sysdev.h>
 #include <linux/power_supply.h>
 #include <linux/slab.h>
-#if defined(CONFIG_LAB126)
-#include <linux/metricslog.h>
-#endif
 #if defined(CONFIG_EARLYSUSPEND)
 #include <linux/earlysuspend.h>
 #endif
@@ -132,9 +129,6 @@ struct bq27541_info {
 	int suspend_capacity;
 	/* Battery capacity when system enters early suspend */
 	int early_suspend_capacity;
-#if defined(CONFIG_LAB126) && defined(CONFIG_EARLYSUSPEND)
-	struct early_suspend early_suspend;
-#endif
 };
 
 static int bq27541_battery_lmd = 0;
@@ -402,9 +396,6 @@ static void battery_handle_work(struct work_struct *work)
 	int value = 0, flags = 0;
 	struct bq27541_info *info = container_of(work,
 				struct bq27541_info, battery_work.work);
-#ifdef CONFIG_LAB126
-	char buf[128];
-#endif
 
 	err = bq27541_battery_read_temperature(&value);
 	if (err) {
@@ -462,14 +453,6 @@ static void battery_handle_work(struct work_struct *work)
 		printk(KERN_WARNING
 			"bq27541: battery has reached critically low level, "
 			"shutting down...\n");
-
-#ifdef CONFIG_LAB126
-
-		snprintf(buf, sizeof(buf),
-			"bq27541:def:critical_shutdown=1:");
-
-		log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-#endif
 		sys_sync();
 		orderly_poweroff(true);
 	}
@@ -803,44 +786,6 @@ static enum power_supply_property bq27541_battery_props[] = {
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 };
 
-#if defined(CONFIG_LAB126) && defined(CONFIG_EARLYSUSPEND)
-static void bq27541_early_suspend(struct early_suspend *handler)
-{
-	struct bq27541_info *info = container_of(handler,
-			struct bq27541_info, early_suspend);
-
-	/* Cache the current capacity */
-	info->early_suspend_capacity = info->battery_capacity;
-
-	/* Mark the suspend time */
-	info->early_suspend_time = current_kernel_time();
-}
-
-static void bq27541_late_resume(struct early_suspend *handler)
-{
-	struct bq27541_info *info = container_of(handler,
-			struct bq27541_info, early_suspend);
-	int value = info->battery_capacity;
-
-	/* Compute elapsed time and determine screen off drainage */
-	struct timespec diff = timespec_sub(current_kernel_time(),
-			info->early_suspend_time);
-
-	if (info->early_suspend_capacity != -1) {
-		char buf[512];
-		snprintf(buf, sizeof(buf),
-			"screen_off_drain:def:value=%d,elapsed=%ld:",
-			info->early_suspend_capacity - value,
-			diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-		log_to_metrics(ANDROID_LOG_INFO, "drain_metrics", buf);
-		dev_info(&bq27541_battery_i2c_client->dev,
-			"Screen off drainage: %d %% over %ld msecs\n",
-			info->early_suspend_capacity - value,
-			diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-	}
-}
-#endif
-
 static int bq27541_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct bq27541_info *info = NULL;
@@ -907,13 +852,6 @@ static int bq27541_probe(struct i2c_client *client, const struct i2c_device_id *
 	schedule_delayed_work(&info->battery_work,
 		msecs_to_jiffies(BQ27541_BATTERY_INTERVAL_EARLY));
 
-#if defined(CONFIG_LAB126) && defined(CONFIG_EARLYSUSPEND)
-	info->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 1;
-	info->early_suspend.suspend = bq27541_early_suspend;
-	info->early_suspend.resume = bq27541_late_resume;
-	register_early_suspend(&info->early_suspend);
-#endif
-
 	pr_info("%s: probe succeeded\n", DRIVER_NAME);
 
         return 0;
@@ -955,9 +893,6 @@ static int bq27541_battery_resume(struct i2c_client *client)
 {
 	int err = 0, value = 0;
 	struct bq27541_info *info = i2c_get_clientdata(client);
-#if defined(CONFIG_LAB126)
-	struct timespec diff;
-#endif
 
 	/*
 	 * Check for the battery voltage
@@ -1009,24 +944,6 @@ static int bq27541_battery_resume(struct i2c_client *client)
 
 	/* Report to upper layers */
 	power_supply_changed(&info->battery);
-
-#if defined(CONFIG_LAB126)
-	/* Compute elapsed time and determine suspend drainage */
-	diff = timespec_sub(current_kernel_time(), info->suspend_time);
-
-	if (!err && info->suspend_capacity != -1) {
-		char buf[512];
-		snprintf(buf, sizeof(buf),
-			"suspend_drain:def:value=%d,elapsed=%ld:",
-			info->suspend_capacity - value,
-			diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-		log_to_metrics(ANDROID_LOG_INFO, "drain_metrics", buf);
-		dev_info(&bq27541_battery_i2c_client->dev,
-			"Suspend drainage: %d %% over %ld msecs\n",
-			info->suspend_capacity - value,
-			diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-	}
-#endif
 
 	schedule_delayed_work(&info->battery_work,
 		msecs_to_jiffies(BQ27541_BATTERY_INTERVAL));

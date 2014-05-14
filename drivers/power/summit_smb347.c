@@ -32,10 +32,6 @@
 #if defined(CONFIG_HAS_WAKELOCK)
 #include <linux/wakelock.h>
 #endif
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-#define THERMO_METRICS_STR_LEN 128
-#endif
 
 #define SUMMIT_SMB347_I2C_ADDRESS	0x5F
 #define SUMMIT_SMB347_I2C_ADDRESS_SECONDARY	0x06
@@ -2257,10 +2253,6 @@ static int smb347_apply_cooling(struct thermal_dev *dev,
 	unsigned char temp = 0xff;
 	int ret = -1;
 	static int previous_cooling_level = 0, new_cooling_level = 0;
-#ifdef CONFIG_LAB126
-	char *thermal_metric_prefix = "charger_cooling:def:monitor=1";
-	char buf[THERMO_METRICS_STR_LEN];
-#endif
 	/* transform into current limitation */
 	current_limit = thermal_cooling_device_reduction_get(dev, level);
 
@@ -2466,15 +2458,6 @@ static int smb347_apply_cooling(struct thermal_dev *dev,
 		THERMAL_INFO("max charge current transision from %d to %d",previous_max_charge_current,priv->max_thermal_charge_current); 
 	}
 
-#ifdef CONFIG_LAB126
-		if ( previous_cooling_level == 0 ) {
-			snprintf(buf,THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix, "start");
-			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-		} else if ( new_cooling_level == 0 ) {
-			snprintf(buf,THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix, "stop");
-			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-		}
-#endif
 	previous_cooling_level = new_cooling_level;
 
 	return 0;

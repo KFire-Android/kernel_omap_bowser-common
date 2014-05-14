@@ -47,12 +47,6 @@
 
 #include "dvfs.h"
 
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-#define THERMO_METRICS_STR_LEN 128
-#endif
-
-
 #ifdef CONFIG_SMP
 struct lpj_info {
 	unsigned long	ref;
@@ -374,10 +368,6 @@ static int cpufreq_apply_cooling(struct thermal_dev *dev,
 {
 	static int old_freq = 0; //for logging
 	mutex_lock(&omap_cpufreq_lock);
-#ifdef CONFIG_LAB126
-	char *thermal_metric_prefix = "cpufreq_cooling:def:monitor=1";
-	char buf[THERMO_METRICS_STR_LEN];
-#endif
 
 	if (!strcmp(dev->domain_name, "case")) {
 		if (cooling_level > case_subzone_number)
@@ -402,21 +392,11 @@ static int cpufreq_apply_cooling(struct thermal_dev *dev,
 		omap_thermal_step_freq_up();
 		THERMAL_INFO("CPUFreq MAX transition from %d to %d",
 			old_freq ,current_target_freq);
-#ifdef CONFIG_LAB126
-		snprintf(buf, THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix,  "stop");
-		log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-#endif
 		old_freq = current_target_freq;
 	} else if (new_cooling_level > current_cooling_level) {
 		omap_thermal_step_freq_down();
 		THERMAL_INFO("CPUFreq MAX transition from %d to %d",
 			( (old_freq == 0 ) ? current_target_freq:old_freq ), max_thermal);
-#ifdef CONFIG_LAB126
-		if ( current_cooling_level == 0 ) {
-			snprintf(buf, THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix,"start");
-			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-		}
-#endif
 		old_freq = max_thermal;
 	}
 

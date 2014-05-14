@@ -31,12 +31,6 @@
 
 #include "usb.h"
 
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-#define EHCI_METRICS_STR_LEN 128
-#endif
-
-
 /* if we are in debug mode, always announce new devices */
 #ifdef DEBUG
 #ifndef CONFIG_USB_ANNOUNCE_NEW_DEVICES
@@ -88,9 +82,6 @@ struct usb_hub {
 	struct delayed_work	init_work;
 	void			**port_owners;
 };
-
-struct timespec disconnect_time;
-
 
 static inline int hub_is_superspeed(struct usb_device *hdev)
 {
@@ -1679,9 +1670,6 @@ void usb_disconnect(struct usb_device **pdev)
 	dev_info(&udev->dev, "USB disconnect, device number %d\n",
 			udev->devnum);
 
-	/* Mark the disconnect time */
-	disconnect_time = current_kernel_time();
-
 	usb_lock_device(udev);
 
 	/* Free up all the children before we remove this device */
@@ -1732,15 +1720,6 @@ static void show_string(struct usb_device *udev, char *id, char *string)
 
 static void announce_device(struct usb_device *udev)
 {
-
-int count = 0;
-
-#ifdef CONFIG_LAB126
-	char buff[EHCI_METRICS_STR_LEN];
-#endif
-
-	count++;
-
 	dev_info(&udev->dev, "New USB device found, idVendor=%04x, idProduct=%04x\n",
 		le16_to_cpu(udev->descriptor.idVendor),
 		le16_to_cpu(udev->descriptor.idProduct));
@@ -1752,21 +1731,6 @@ int count = 0;
 	show_string(udev, "Product", udev->product);
 	show_string(udev, "Manufacturer", udev->manufacturer);
 	show_string(udev, "SerialNumber", udev->serial);
-
-	struct timespec diff = timespec_sub(current_kernel_time(),
-			disconnect_time);
-
-#ifdef CONFIG_LAB126
-	if(count >= 1)
-	{
-	printk("Disconnect time elapsed=%ld ms:",diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-	snprintf(buff, sizeof(buff),
-			"Disconnect time elapsed=%ld ms:",
-			diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-	log_to_metrics(ANDROID_LOG_INFO, "Ehci error", buff);
-	}
-#endif
-
 }
 #else
 static inline void announce_device(struct usb_device *udev) { }

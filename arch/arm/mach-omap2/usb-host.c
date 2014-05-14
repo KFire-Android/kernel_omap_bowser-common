@@ -38,12 +38,6 @@
 #include "control.h"
 #include "mux.h"
 
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-#define PHY_METRICS_STR_LEN 128
-#endif
-
-
 #ifdef CONFIG_MFD_OMAP_USB_HOST
 
 #define OMAP_USBHS_DEVICE	"usbhs_omap"
@@ -867,9 +861,6 @@ static void usbhs_resume_work(struct work_struct *work)
 	int ret;
 	int retries = 0;
 	u16 orig_val, val;
-#ifdef CONFIG_LAB126
-	char buff[PHY_METRICS_STR_LEN];
-#endif
 
 	dev_dbg(usbhs_wake->dev, "USB IO PAD Wakeup event triggered\n");
 
@@ -909,11 +900,6 @@ again:
 				pm_runtime_get_sync(usbhs_wake->dev);
 				omap_hwmod_enable_ioring_wakeup(oh);
 				pm_runtime_put_sync(usbhs_wake->dev);
-#ifdef CONFIG_LAB126
-				snprintf(buff,sizeof(buff)," %s: PHY didn't exit from low power mode after 10 tries\n", __func__);
-				log_to_metrics(ANDROID_LOG_INFO, "PHY error", buff);
-#endif
-
 				return;
 			}
 			goto again;

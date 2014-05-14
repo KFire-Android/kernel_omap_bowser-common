@@ -15,10 +15,6 @@
 #include <linux/fb.h>
 #include <linux/slab.h>
 #include <linux/thermal_framework.h>
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-#define THERMO_METRICS_STR_LEN 128
-#endif
 
 #ifdef CONFIG_PMAC_BACKLIGHT
 #include <asm/backlight.h>
@@ -360,10 +356,6 @@ static int backlight_apply_cooling(struct thermal_dev *dev,
 	int brightness;
 	int percent;
 	static int previous_cooling_level = 0, new_cooling_level = 0;
-#ifdef CONFIG_LAB126
-	char *thermal_metric_prefix = "backlight_cooling:def:monitor=1";
-	char buf[THERMO_METRICS_STR_LEN];
-#endif
 
 	/* transform into percentage */
 	percent = thermal_cooling_device_reduction_get(dev, level);
@@ -402,15 +394,6 @@ static int backlight_apply_cooling(struct thermal_dev *dev,
 			THERMAL_INFO("brightness transition from %d to %d", bd->props.brightness, brightness);
 			bd->props.brightness = brightness;
 		}
-#ifdef CONFIG_LAB126
-		if ( previous_cooling_level == 0 ) {
-			snprintf(buf, THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix, "start");
-			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-		} else if ( new_cooling_level == 0 ) {
-			snprintf(buf, THERMO_METRICS_STR_LEN,"%s,throttling=%s:", thermal_metric_prefix, "stop");
-			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-		}
-#endif
 		backlight_update_status(bd);
 		backlight_generate_event(bd, BACKLIGHT_UPDATE_SYSFS);
 	}

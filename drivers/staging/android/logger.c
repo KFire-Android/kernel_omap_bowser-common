@@ -28,13 +28,6 @@
 #include "logger.h"
 
 #include <asm/ioctls.h>
-#include <linux/hardirq.h>
-
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-
-static int metrics_init = 0;
-#endif
 
 /*
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
@@ -711,155 +704,7 @@ DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, 256*1024)
 DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, 256*1024)
 DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 256*1024)
 DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, 256*1024)
-#ifdef CONFIG_LAB126
-DEFINE_LOGGER_DEVICE(log_metrics, LOGGER_LOG_METRICS, 128*1024)
-DEFINE_LOGGER_DEVICE(log_amazon_main, LOGGER_LOG_AMAZON_MAIN, 64*1024)
-#endif
 
-#ifdef CONFIG_LAB126
-static void logger_kernel_write(const struct iovec *iov, unsigned long nr_segs)
-{
-	struct logger_log *log = &log_metrics;
-	struct logger_entry header;
-	struct timespec now;
-	unsigned long count = nr_segs;
-	size_t total_len = 0;
-
-	while (count-- > 0) {
-		total_len += iov[count].iov_len;
-	}
-
-	now = current_kernel_time();
-
-	header.pid = current->tgid;
-	header.tid = current->pid;
-	header.sec = now.tv_sec;
-	header.nsec = now.tv_nsec;
-	header.len = min_t(size_t, total_len, LOGGER_ENTRY_MAX_PAYLOAD);
-
-	/* null writes succeed, return zero */
-	if (unlikely(!header.len))
-		return;
-
-	mutex_lock(&log->mutex);
-
-	/*
-	 * Fix up any readers, pulling them forward to the first readable
-	 * entry after (what will be) the new write offset. We do this now
-	 * because if we partially fail, we can end up with clobbered log
-	 * entries that encroach on readable buffer.
-	 */
-	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
-
-	do_write_log(log, &header, sizeof(struct logger_entry));
-
-	total_len = 0;
-
-	while (nr_segs-- > 0) {
-		size_t len;
-
-		/* figure out how much of this vector we can keep */
-		len = min_t(size_t, iov->iov_len, header.len - total_len);
-
-		/* write out this segment's payload */
-		do_write_log(log, iov->iov_base, len);
-
-		iov++;
-		total_len += len;
-	}
-
-	mutex_unlock(&log->mutex);
-
-	/* wake up any blocked readers */
-	wake_up_interruptible(&log->wq);
-}
-
-void log_to_metrics(android_LogPriority priority, const char *domain, const char *log_msg)
-{
-	if (metrics_init != 0 && log_msg != NULL) {
-		struct iovec vec[3];
-
-		if (domain == NULL) {
-			domain = "kernel";
-		}
-
-		vec[0].iov_base = (unsigned char *)&priority;
-		vec[0].iov_len  = 1;
-
-		vec[1].iov_base = (void *)domain;
-		vec[1].iov_len  = strlen(domain) + 1;
-
-		vec[2].iov_base = (void *)log_msg;
-		vec[2].iov_len  = strlen(log_msg) + 1;
-
-		logger_kernel_write(vec, 3);
-	}
-}
-EXPORT_SYMBOL(log_to_metrics);
-#endif
-
-/* Kernel interface to android logs
- */
-#define LOGGER_TAG_MAX 8
-
-ssize_t __alog_main(char *buf, unsigned int buflen)
-{
-	struct logger_log *log = &log_main;
-	size_t orig = log->w_off;
-	struct logger_entry header;
-	struct timespec now;
-	ssize_t ret = 0;
-
-	/* Only allow logging from process context for now
-	*/
-	if (in_interrupt())
-		return 0;
-
-	now = current_kernel_time();
-
-	header.pid = current->tgid;
-	header.tid = current->pid;
-	header.sec = now.tv_sec;
-	header.nsec = now.tv_nsec;
-	header.len = min_t(size_t, buflen, LOGGER_ENTRY_MAX_PAYLOAD);
-
-	/* null writes succeed, return zero */
-	if (unlikely(!header.len))
-		return 0;
-
-	mutex_lock(&log->mutex);
-
-	/*
-	 * Fix up any readers, pulling them forward to the first readable
-	 * entry after (what will be) the new write offset. We do this now
-	 * because if we partially fail, we can end up with clobbered log
-	 * entries that encroach on readable buffer.
-	 */
-	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
-
-	do_write_log(log, &header, sizeof(struct logger_entry));
-	do_write_log(log, buf, buflen);
-
-	mutex_unlock(&log->mutex);
-
-	/* wake up any blocked readers */
-	wake_up_interruptible(&log->wq);
-
-	return ret;
-}
-
-void alog_main(unsigned char level, char *tag, char *log_msg) {
-	static char buf[LOGGER_ENTRY_MAX_PAYLOAD];
-	int s, s2;
-
-	memset(buf, 0, LOGGER_ENTRY_MAX_PAYLOAD);
-	buf[0] = level;
-	s = strnlen(tag, LOGGER_TAG_MAX);
-	strncpy(&(buf[1]), tag, s);
-	s2 = strnlen(log_msg, LOGGER_ENTRY_MAX_PAYLOAD - s - 3);
-	strncpy(&(buf[s + 2]), log_msg, s2);
-	__alog_main(buf, s + s2 + 3);
-}
 static struct logger_log *get_log_from_minor(int minor)
 {
 	if (log_main.misc.minor == minor)
@@ -870,12 +715,6 @@ static struct logger_log *get_log_from_minor(int minor)
 		return &log_radio;
 	if (log_system.misc.minor == minor)
 		return &log_system;
-#ifdef CONFIG_LAB126
-	if (log_metrics.misc.minor == minor)
-		return &log_metrics;
-	if (log_amazon_main.misc.minor == minor)
-		return &log_amazon_main;
-#endif
 	return NULL;
 }
 
@@ -915,18 +754,6 @@ static int __init logger_init(void)
 	ret = init_log(&log_system);
 	if (unlikely(ret))
 		goto out;
-
-#ifdef CONFIG_LAB126
-	ret = init_log(&log_metrics);
-	if (unlikely(ret))
-		goto out;
-
-	metrics_init = 1;
-
-	ret = init_log(&log_amazon_main);
-	if (unlikely(ret))
-		goto out;
-#endif
 
 out:
 	return ret;

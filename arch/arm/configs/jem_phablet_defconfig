@@ -958,7 +958,6 @@ CONFIG_RFKILL_INPUT=y
 #
 # Device Drivers
 #
-CONFIG_LAB126=y
 
 #
 # Generic Driver Options

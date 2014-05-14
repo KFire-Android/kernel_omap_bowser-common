@@ -40,8 +40,6 @@
 #include "panel-nt51012.h"
 #include <mach/bowser_idme_init.h>
 
-#include <linux/metricslog.h>
-
 
 static unsigned char first_suspend = 1;
 static unsigned char panel_err_count = 0;
@@ -888,8 +886,6 @@ static void panel_reset_work(struct work_struct *work)
 		r = nt51012_reset(dssdev);
 		if(r < 0) {
 			printk("Panel NoAck & Error in panel_reset\n");
-			log_to_metrics(ANDROID_LOG_INFO, "esd",
-					"display_reset:def:failed=1:");
 		}
 		else {
 			printk("Panel NoAck Resetted successfully\n");

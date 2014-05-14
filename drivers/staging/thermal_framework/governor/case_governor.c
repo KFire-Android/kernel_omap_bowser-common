@@ -24,10 +24,6 @@
 
 #include <linux/thermal_framework.h>
 #include <plat/cpu.h>
-#ifdef CONFIG_LAB126
-#include <linux/metricslog.h>
-#define THERMO_METRICS_STR_LEN 128
-#endif
 
 #define THERMAL_PREFIX "Thermal Policy: case_governor: "
 #define THERMAL_INFO(fmt, args...) do { printk(KERN_INFO THERMAL_PREFIX fmt, ## args); } while(0)
@@ -64,14 +60,6 @@ static int case_thermal_shutdown_enabled = 1;
 
 static void case_reached_max_state(struct list_head *cooling_list, int temp)
 {
-#ifdef CONFIG_LAB126
-	char *thermal_metric_prefix = "thermzone:def:monitor=1";
-	char buf[THERMO_METRICS_STR_LEN];
-
-	snprintf(buf, THERMO_METRICS_STR_LEN, "%s,temp=%d,caught=shutdown:",
-			thermal_metric_prefix, temp);
-	log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-#endif
 	/* invoke charger cooling device with cooling level 0 to reset charger limit to max  */
 	/* So, device can be charged during powered off state caused by thermal policy */
 	THERMAL_INFO("!!! Thermal Shutdown!!!, reset charger current to MAX");
@@ -105,10 +93,6 @@ static void case_reached_max_state(struct list_head *cooling_list, int temp)
 
 static int case_thermal_manager(struct list_head *cooling_list, int temp)
 {
-#ifdef CONFIG_LAB126
-	char *thermal_metric_prefix = "thermzone:def:monitor=1";
-	char buf[THERMO_METRICS_STR_LEN];
-#endif
 	if (temp == 0)
 		return 0;
 	THERMAL_DBG(" temp %d, tcold %d, thot %d, level %d\n",temp, tcold, thot, case_gov->cooling_level);
@@ -122,10 +106,6 @@ static int case_thermal_manager(struct list_head *cooling_list, int temp)
 		/* update cooling level */
 		case_gov->cooling_level = (cpu_threshold_cold - sys_threshold_cold)/ SYS_THRESHOLD_HOT_INC;
 
-#ifdef CONFIG_LAB126
-		snprintf(buf,THERMO_METRICS_STR_LEN,"%s,thermal_zone=%d:", thermal_metric_prefix, (cpu_threshold_cold - sys_threshold_cold)/1000 );
-		log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-#endif
 		/* invoke cpu cooling device with cooling level 0 */
 		thermal_device_call_dev(cooling_list, "cpufreq_cooling.1" , cool_device, 0);
 		/* invoke charger cooling device with cooling level 2, so device gets charged */
@@ -172,10 +152,6 @@ static int case_thermal_manager(struct list_head *cooling_list, int temp)
 				">= tcold thot set to %d",
 				__func__, thot);
 	}
-#ifdef CONFIG_LAB126
-		snprintf(buf,THERMO_METRICS_STR_LEN,"%s,thermal_zone=%d:", thermal_metric_prefix, case_gov->cooling_level);
-		log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-#endif
 	thermal_device_call_all(cooling_list, cool_device,
 						case_gov->cooling_level);
 
