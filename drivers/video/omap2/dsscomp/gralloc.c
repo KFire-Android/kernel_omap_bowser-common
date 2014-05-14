@@ -286,7 +286,7 @@ static void dsscomp_gralloc_do_clone(struct work_struct *work)
 
 #ifdef CONFIG_DEBUG_FS
 	ms2 = ktime_to_ms(ktime_get());
-	dev_info(DEV(cdev), "DMA latency(msec) = %d\n", ms2-ms1);
+	dev_dbg(DEV(cdev), "DMA latency(msec) = %d\n", ms2-ms1);
 #endif
 	mutex_lock(&mtx);
 	/* ignore deferred frames if we've since been blanked */
@@ -714,8 +714,6 @@ skip_map1d:
 					"dsscomp wq start failed");
 				atomic_dec(&gsync->refs);
 			}
-			else
-				ovl_use_mask[ch] = ovl_new_use_mask[ch];
 			continue;
 		}
 
