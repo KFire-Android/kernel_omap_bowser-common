@@ -443,7 +443,7 @@ static struct dsscomp_platform_data dsscomp_config_wuxga = {
 
 */
 static struct dsscomp_platform_data dsscomp_config_wuxga = {
-               .tiler1d_slotsz = ( 36 * SZ_1M ),
+               .tiler1d_slotsz = ( 34 * SZ_1M ),
 };
 #endif
 
