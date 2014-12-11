@@ -180,10 +180,10 @@ static void hall_handle_event(void)
     1.close book-cover in Normal mode(BL_ON) 2.open book-cover in Suspend mode(BL_OFF) */
     if (((gHallEventInfo.bl_status == BL_ON) && (gHallEventInfo.hall_current_status == HALL_CLOSED)) ||
       ((gHallEventInfo.bl_status == BL_OFF) && (gHallEventInfo.hall_current_status == HALL_OPENED))) {
-      input_report_key(dev, KEY_END, KEY_PRESSED);
+      input_report_key(dev, KEY_POWER, KEY_PRESSED);
       input_sync(dev);
       mdelay(20);
-      input_report_key(dev, KEY_END, KEY_RELEASED);
+      input_report_key(dev, KEY_POWER, KEY_RELEASED);
       input_sync(dev);
     }
   }
@@ -277,8 +277,8 @@ static int __devinit bu52061_probe(struct platform_device *pdev)
   input_dev->name = "bu52061";
   input_dev->phys = "bu52061/input0";      
   input_dev->evbit[0] = BIT(EV_KEY);
-  input_dev->keybit[BIT_WORD(KEY_END)] =
-                        BIT_MASK(KEY_END);
+  input_dev->keybit[BIT_WORD(KEY_POWER)] =
+                        BIT_MASK(KEY_POWER);
   dev_set_drvdata(&input_dev->dev, bu52061_platform_data);
 	
   input_dev->open = bu52061_input_open;
