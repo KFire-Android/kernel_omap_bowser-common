@@ -1165,16 +1165,9 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	}
 
 	if (req->cmd_flags & REQ_DISCARD) {
-/*
-** HASH:
-** Patching *possible* TRIM bug in Samsung MAG2GA Chips
-** -- also removing the secdiscard request to be safe
-*/
-#if 0
 		if (req->cmd_flags & REQ_SECURE)
 			ret = mmc_blk_issue_secdiscard_rq(mq, req);
 		else
-#endif
 			ret = mmc_blk_issue_discard_rq(mq, req);
 	} else if (req->cmd_flags & REQ_FLUSH) {
 		ret = mmc_blk_issue_flush(mq, req);
